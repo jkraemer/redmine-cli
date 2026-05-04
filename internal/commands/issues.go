@@ -20,6 +20,7 @@ func newIssuesCmd(rc *runCtx) *cobra.Command {
 	c.AddCommand(newIssuesListCmd(rc))
 	c.AddCommand(newIssuesGetCmd(rc))
 	c.AddCommand(newIssuesCreateCmd(rc))
+	c.AddCommand(newIssuesUpdateCmd(rc))
 	return c
 }
 
@@ -188,6 +189,102 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&startDate, "start-date", "", "Start date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
+	return cmd
+}
+
+func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
+	var (
+		subject, description, assignee, notes, startDate, dueDate string
+		status, priority, done                                    int
+		confirm                                                   bool
+	)
+	cmd := &cobra.Command{
+		Use:   "update <id>",
+		Short: "Update an existing issue (requires --confirm to send)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.Atoi(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid issue id %q", args[0])
+			}
+
+			mutating := []string{"subject", "description", "status", "assignee", "priority", "done", "notes", "start-date", "due-date"}
+			anySet := false
+			for _, n := range mutating {
+				if cmd.Flags().Changed(n) {
+					anySet = true
+					break
+				}
+			}
+			if !anySet {
+				return fmt.Errorf("at least one of %s must be provided", strings.Join(mutating, ", "))
+			}
+
+			if startDate != "" && !dateRE.MatchString(startDate) {
+				return fmt.Errorf("--start-date must be YYYY-MM-DD")
+			}
+			if dueDate != "" && !dateRE.MatchString(dueDate) {
+				return fmt.Errorf("--due-date must be YYYY-MM-DD")
+			}
+			if cmd.Flags().Changed("done") && (done < 0 || done > 100) {
+				return fmt.Errorf("--done must be between 0 and 100")
+			}
+
+			var payload api.IssueUpdate
+			if cmd.Flags().Changed("subject") {
+				payload.Subject = &subject
+			}
+			if cmd.Flags().Changed("description") {
+				payload.Description = &description
+			}
+			if cmd.Flags().Changed("status") {
+				payload.StatusID = &status
+			}
+			if cmd.Flags().Changed("priority") {
+				payload.PriorityID = &priority
+			}
+			if cmd.Flags().Changed("assignee") {
+				payload.AssignedToID = &assignee
+			}
+			if cmd.Flags().Changed("done") {
+				payload.DoneRatio = &done
+			}
+			if cmd.Flags().Changed("notes") {
+				payload.Notes = &notes
+			}
+			if cmd.Flags().Changed("start-date") {
+				payload.StartDate = &startDate
+			}
+			if cmd.Flags().Changed("due-date") {
+				payload.DueDate = &dueDate
+			}
+
+			body := map[string]any{"issue": payload}
+			path := fmt.Sprintf("/issues/%d.json", id)
+			if !confirm {
+				return renderDryRun(rc, "PUT", path, body)
+			}
+			if err := rc.client.UpdateIssue(rc.ctx(), id, payload); err != nil {
+				return err
+			}
+			// Redmine returns 204 on update; emit a small confirmation.
+			if rc.format == "markdown" {
+				_, err := fmt.Fprintf(rc.out, "Updated issue #%d.\n", id)
+				return err
+			}
+			return output.JSON(rc.out, map[string]any{"updated": true, "id": id})
+		},
+	}
+	cmd.Flags().StringVar(&subject, "subject", "", "New subject")
+	cmd.Flags().StringVar(&description, "description", "", "New description")
+	cmd.Flags().IntVar(&status, "status", 0, "New status ID")
+	cmd.Flags().StringVar(&assignee, "assignee", "", "New assignee user ID or 'me'")
+	cmd.Flags().IntVar(&priority, "priority", 0, "New priority ID")
+	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
+	cmd.Flags().StringVar(&notes, "notes", "", "Add a journal note")
+	cmd.Flags().StringVar(&startDate, "start-date", "", "New start date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&dueDate, "due-date", "", "New due date (YYYY-MM-DD)")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }
