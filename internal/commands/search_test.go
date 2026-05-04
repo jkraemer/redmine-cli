@@ -2,8 +2,11 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -130,6 +133,79 @@ func TestSearch_AllTypesShorthand(t *testing.T) {
 		if !strings.Contains(seenQuery, want) {
 			t.Errorf("query missing %q: %s", want, seenQuery)
 		}
+	}
+}
+
+// TestSearch_All_PaginatesAcrossPages mocks 3 pages (total_count=250)
+// with internal page size 100 and verifies that --all collects all 250
+// items via three sequential API calls.
+func TestSearch_All_PaginatesAcrossPages(t *testing.T) {
+	const total = 250
+	var calls int32
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		offset := r.URL.Query().Get("offset")
+		limit := r.URL.Query().Get("limit")
+		if limit != "100" {
+			t.Errorf("expected limit=100, got %s", limit)
+		}
+		var off int
+		if offset == "" {
+			off = 0
+		} else {
+			fmt.Sscanf(offset, "%d", &off)
+		}
+		pageSize := 100
+		end := off + pageSize
+		if end > total {
+			end = total
+		}
+		var items []string
+		for i := off; i < end; i++ {
+			items = append(items, fmt.Sprintf(`{"id":%d,"title":"t%d","type":"issue","datetime":"2026-05-04T00:00:00Z"}`, i+1, i+1))
+		}
+		fmt.Fprintf(w, `{"results":[%s],"total_count":%d,"offset":%d,"limit":%d}`, strings.Join(items, ","), total, off, pageSize)
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"search", "foo", "--all"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Errorf("expected 3 API calls, got %d", got)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	results, _ := got["results"].([]any)
+	if len(results) != total {
+		t.Errorf("expected %d results, got %d", total, len(results))
+	}
+}
+
+// TestSearch_All_RespectsCap mocks total_count=1500 and expects --all
+// to refuse with an error mentioning the count and "narrow".
+func TestSearch_All_RespectsCap(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"results":[],"total_count":1500,"offset":0,"limit":100}`))
+	})
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"search", "foo", "--all"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "1500") || !strings.Contains(err.Error(), "narrow") {
+		t.Errorf("err=%q", err.Error())
 	}
 }
 

@@ -13,6 +13,15 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
+// paginateAllPageSize is the internal page size used when --all is set on
+// list commands. paginateAllCap is the maximum allowed total_count; if the
+// server reports more than this many results, --all aborts with an error
+// asking the caller to narrow their filters.
+const (
+	paginateAllPageSize = 100
+	paginateAllCap      = 1000
+)
+
 // parseCustomFields converts repeated --cf "id=value" strings into typed
 // CustomFieldValue entries. It rejects malformed inputs and duplicate IDs.
 func parseCustomFields(specs []string) ([]api.CustomFieldValue, error) {
@@ -69,9 +78,6 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 		Use:   "list",
 		Short: "List issues",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if all && offset > 0 {
-				return fmt.Errorf("--all and --offset are mutually exclusive")
-			}
 			if limit < 0 || limit > 100 {
 				return fmt.Errorf("--limit must be between 1 and 100")
 			}
@@ -88,7 +94,12 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 			if updatedSince != "" {
 				p.UpdatedOn = ">=" + updatedSince
 			}
-			if p.Limit == 0 {
+			if all {
+				// In --all mode, ignore --limit/--offset and fetch
+				// every page using a fixed internal page size.
+				p.Limit = paginateAllPageSize
+				p.Offset = 0
+			} else if p.Limit == 0 {
 				p.Limit = 25
 			}
 
@@ -98,6 +109,9 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 				res, err := rc.client.ListIssues(ctx, p)
 				if err != nil {
 					return err
+				}
+				if all && res.TotalCount > paginateAllCap {
+					return fmt.Errorf("more than %d results (%d); narrow your filters or omit --all", paginateAllCap, res.TotalCount)
 				}
 				collected = append(collected, res.Issues...)
 				if !all || len(collected) >= res.TotalCount || len(res.Issues) == 0 {
@@ -115,7 +129,7 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&sort, "sort", "", "Sort expression, e.g. updated_on:desc")
 	cmd.Flags().IntVar(&limit, "limit", 25, "Max results per page (1-100)")
 	cmd.Flags().IntVar(&offset, "offset", 0, "Pagination offset")
-	cmd.Flags().BoolVar(&all, "all", false, "Fetch all pages")
+	cmd.Flags().BoolVar(&all, "all", false, "Fetch all pages (ignores --limit/--offset; capped at 1000 results)")
 	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: attachments, relations")
 	return cmd
 }

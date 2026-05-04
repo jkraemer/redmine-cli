@@ -10,10 +10,6 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
-// searchAllCap caps the total number of results returned in --all mode.
-// Mirrors the soft cap used elsewhere; keeps a runaway query bounded.
-const searchAllCap = 1000
-
 func newSearchCmd(rc *runCtx) *cobra.Command {
 	var (
 		issues, wiki, projects, allTypes bool
@@ -28,9 +24,6 @@ func newSearchCmd(rc *runCtx) *cobra.Command {
 		Short: "Search issues, wiki pages, and projects",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if all && offset > 0 {
-				return fmt.Errorf("--all and --offset are mutually exclusive")
-			}
 			if limit < 0 || limit > 100 {
 				return fmt.Errorf("--limit must be between 1 and 100")
 			}
@@ -60,7 +53,12 @@ func newSearchCmd(rc *runCtx) *cobra.Command {
 				Scope:      scope,
 				ProjectID:  project,
 			}
-			if p.Limit == 0 {
+			if all {
+				// In --all mode, ignore --limit/--offset and fetch
+				// every page using a fixed internal page size.
+				p.Limit = paginateAllPageSize
+				p.Offset = 0
+			} else if p.Limit == 0 {
 				p.Limit = 25
 			}
 
@@ -71,11 +69,11 @@ func newSearchCmd(rc *runCtx) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				if all && res.TotalCount > paginateAllCap {
+					return fmt.Errorf("more than %d results (%d); narrow your filters or omit --all", paginateAllCap, res.TotalCount)
+				}
 				collected = append(collected, res.Results...)
 				if !all || len(collected) >= res.TotalCount || len(res.Results) == 0 {
-					break
-				}
-				if len(collected) >= searchAllCap {
 					break
 				}
 				p.Offset += len(res.Results)
@@ -94,7 +92,7 @@ func newSearchCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "Narrow search to a project (ID or identifier)")
 	cmd.Flags().IntVar(&limit, "limit", 25, "Max results per page (1-100)")
 	cmd.Flags().IntVar(&offset, "offset", 0, "Pagination offset")
-	cmd.Flags().BoolVar(&all, "all", false, "Fetch all pages (capped at 1000 results)")
+	cmd.Flags().BoolVar(&all, "all", false, "Fetch all pages (ignores --limit/--offset; capped at 1000 results)")
 	return cmd
 }
 

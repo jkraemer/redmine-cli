@@ -2,8 +2,11 @@ package commands
 
 import (
 	"bytes"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -73,6 +76,58 @@ func TestUsersList_JSON(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), `"users"`) || !strings.Contains(out.String(), `"a@b.c"`) {
 		t.Errorf("output unexpected: %s", out.String())
+	}
+}
+
+// TestUsersList_All_PaginatesAcrossPages mocks 3 pages (total_count=250)
+// with internal page size 100 and verifies that --all collects all 250
+// items via three sequential API calls.
+func TestUsersList_All_PaginatesAcrossPages(t *testing.T) {
+	const total = 250
+	var calls int32
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		offset := r.URL.Query().Get("offset")
+		limit := r.URL.Query().Get("limit")
+		if limit != "100" {
+			t.Errorf("expected limit=100, got %s", limit)
+		}
+		var off int
+		if offset == "" {
+			off = 0
+		} else {
+			fmt.Sscanf(offset, "%d", &off)
+		}
+		pageSize := 100
+		end := off + pageSize
+		if end > total {
+			end = total
+		}
+		var items []string
+		for i := off; i < end; i++ {
+			items = append(items, fmt.Sprintf(`{"id":%d,"login":"u%d","firstname":"F%d","lastname":"L%d","mail":"u%d@example.com"}`, i+1, i+1, i+1, i+1, i+1))
+		}
+		fmt.Fprintf(w, `{"users":[%s],"total_count":%d,"offset":%d,"limit":%d}`, strings.Join(items, ","), total, off, pageSize)
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"users", "list", "--all"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Errorf("expected 3 API calls, got %d", got)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	users, _ := got["users"].([]any)
+	if len(users) != total {
+		t.Errorf("expected %d users, got %d", total, len(users))
 	}
 }
 

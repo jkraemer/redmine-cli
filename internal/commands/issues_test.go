@@ -3,11 +3,13 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -442,6 +444,83 @@ func TestIssuesCreate_CustomFields_DuplicateID_Errors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "duplicate") || !strings.Contains(err.Error(), "5") {
 		t.Errorf("err=%q, want duplicate id 5 mention", err.Error())
+	}
+}
+
+// TestIssuesList_All_PaginatesAcrossPages mocks 3 pages (total_count=250)
+// with internal page size 100 and verifies that --all collects all 250
+// items via three sequential API calls.
+func TestIssuesList_All_PaginatesAcrossPages(t *testing.T) {
+	const total = 250
+	var calls int32
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		offset := r.URL.Query().Get("offset")
+		limit := r.URL.Query().Get("limit")
+		if limit != "100" {
+			t.Errorf("expected limit=100, got %s", limit)
+		}
+		// Determine which page based on offset.
+		var off int
+		if offset == "" {
+			off = 0
+		} else {
+			fmt.Sscanf(offset, "%d", &off)
+		}
+		pageSize := 100
+		end := off + pageSize
+		if end > total {
+			end = total
+		}
+		var items []string
+		for i := off; i < end; i++ {
+			items = append(items, fmt.Sprintf(`{"id":%d,"subject":"s%d","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"T"},"status":{"id":1,"name":"S"},"priority":{"id":1,"name":"N"},"author":{"id":1,"name":"A"}}`, i+1, i+1))
+		}
+		fmt.Fprintf(w, `{"issues":[%s],"total_count":%d,"offset":%d,"limit":%d}`, strings.Join(items, ","), total, off, pageSize)
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "list", "--all"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 3 {
+		t.Errorf("expected 3 API calls, got %d", got)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	issues, _ := got["issues"].([]any)
+	if len(issues) != total {
+		t.Errorf("expected %d issues, got %d", total, len(issues))
+	}
+}
+
+// TestIssuesList_All_RespectsCap mocks total_count=1500 and expects --all
+// to refuse with an error mentioning the count and "narrow".
+func TestIssuesList_All_RespectsCap(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":1500,"offset":0,"limit":100}`))
+	})
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "list", "--all"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "1500") {
+		t.Errorf("err=%q, want mention of 1500", err.Error())
+	}
+	if !strings.Contains(err.Error(), "narrow") {
+		t.Errorf("err=%q, want mention of 'narrow'", err.Error())
 	}
 }
 
