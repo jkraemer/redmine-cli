@@ -7,6 +7,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -68,6 +69,57 @@ func (c *Client) doJSON(ctx context.Context, path string, q url.Values, out any)
 	}
 	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		return fmt.Errorf("decode response: %w", err)
+	}
+	return nil
+}
+
+// doWriteJSON sends method to path with payload as a JSON body and decodes
+// any 2xx response body into out. On non-2xx responses returns an *Error.
+// On 204 No Content (or otherwise empty body), out is left untouched and
+// nil is returned. If out is nil, the response body is discarded.
+func (c *Client) doWriteJSON(ctx context.Context, method, path string, payload, out any) error {
+	full := c.baseURL + path
+	var body io.Reader
+	if payload != nil {
+		buf, err := json.Marshal(payload)
+		if err != nil {
+			return fmt.Errorf("encode payload: %w", err)
+		}
+		body = bytes.NewReader(buf)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, full, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	req.Header.Set("Accept", "application/json")
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyExcerpt))
+		return &Error{Status: resp.StatusCode, Body: string(excerpt), URL: full}
+	}
+	if resp.StatusCode == http.StatusNoContent || out == nil {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	// Some servers may legitimately return an empty body on 200/201.
+	// Peek at the body to decide whether to decode.
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
 		return fmt.Errorf("decode response: %w", err)
 	}
 	return nil
@@ -170,4 +222,43 @@ func (c *Client) GetAttachment(ctx context.Context, id int) (*Attachment, io.Rea
 		return nil, nil, &Error{Status: resp.StatusCode, Body: string(body), URL: wrapper.Attachment.ContentURL}
 	}
 	return &wrapper.Attachment, resp.Body, nil
+}
+
+// CreateIssue posts a new issue. The payload is wrapped in
+// {"issue": ...} on the wire and the {"issue": ...} response is unwrapped.
+func (c *Client) CreateIssue(ctx context.Context, p IssueCreate) (*Issue, error) {
+	in := struct {
+		Issue IssueCreate `json:"issue"`
+	}{Issue: p}
+	var out struct {
+		Issue Issue `json:"issue"`
+	}
+	if err := c.doWriteJSON(ctx, "POST", "/issues.json", in, &out); err != nil {
+		return nil, err
+	}
+	return &out.Issue, nil
+}
+
+// UpdateIssue PUTs to /issues/{id}.json. Redmine returns 204 No Content
+// on success, so this method returns nil on success.
+func (c *Client) UpdateIssue(ctx context.Context, id int, p IssueUpdate) error {
+	in := struct {
+		Issue IssueUpdate `json:"issue"`
+	}{Issue: p}
+	return c.doWriteJSON(ctx, "PUT", fmt.Sprintf("/issues/%d.json", id), in, nil)
+}
+
+// LogTime posts a new time entry. The payload is wrapped in
+// {"time_entry": ...} on the wire and the response is unwrapped.
+func (c *Client) LogTime(ctx context.Context, p TimeEntryCreate) (*TimeEntry, error) {
+	in := struct {
+		TimeEntry TimeEntryCreate `json:"time_entry"`
+	}{TimeEntry: p}
+	var out struct {
+		TimeEntry TimeEntry `json:"time_entry"`
+	}
+	if err := c.doWriteJSON(ctx, "POST", "/time_entries.json", in, &out); err != nil {
+		return nil, err
+	}
+	return &out.TimeEntry, nil
 }
