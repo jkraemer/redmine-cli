@@ -103,20 +103,27 @@ type GetIssueParams struct {
 	Include []string // journals, attachments, relations, children
 }
 
+// CustomFieldValue is a single custom field assignment for create/update payloads.
+type CustomFieldValue struct {
+	ID    int `json:"id"`
+	Value any `json:"value"`
+}
+
 // IssueCreate is the payload for POST /issues.json. The CLI wraps this in
 // {"issue": ...} when sending the request.
 type IssueCreate struct {
-	ProjectID     string `json:"project_id"`
-	TrackerID     int    `json:"tracker_id"`
-	Subject       string `json:"subject"`
-	Description   string `json:"description,omitempty"`
-	StatusID      int    `json:"status_id,omitempty"`
-	PriorityID    int    `json:"priority_id,omitempty"`
-	AssignedToID  string `json:"assigned_to_id,omitempty"`
-	ParentIssueID int    `json:"parent_issue_id,omitempty"`
-	StartDate     string `json:"start_date,omitempty"`
-	DueDate       string `json:"due_date,omitempty"`
-	DoneRatio     int    `json:"done_ratio,omitempty"`
+	ProjectID     string             `json:"project_id"`
+	TrackerID     int                `json:"tracker_id"`
+	Subject       string             `json:"subject"`
+	Description   string             `json:"description,omitempty"`
+	StatusID      int                `json:"status_id,omitempty"`
+	PriorityID    int                `json:"priority_id,omitempty"`
+	AssignedToID  string             `json:"assigned_to_id,omitempty"`
+	ParentIssueID int                `json:"parent_issue_id,omitempty"`
+	StartDate     string             `json:"start_date,omitempty"`
+	DueDate       string             `json:"due_date,omitempty"`
+	DoneRatio     int                `json:"done_ratio,omitempty"`
+	CustomFields  []CustomFieldValue `json:"custom_fields,omitempty"`
 }
 
 // IssueUpdate is the payload for PUT /issues/{id}.json. All fields are
@@ -124,15 +131,16 @@ type IssueCreate struct {
 // distinguish "not set" (omit from JSON) from "explicitly empty" (send
 // "" to clear the field). Redmine treats missing fields as unchanged.
 type IssueUpdate struct {
-	Subject      *string `json:"subject,omitempty"`
-	Description  *string `json:"description,omitempty"`
-	StatusID     *int    `json:"status_id,omitempty"`
-	PriorityID   *int    `json:"priority_id,omitempty"`
-	AssignedToID *string `json:"assigned_to_id,omitempty"`
-	DoneRatio    *int    `json:"done_ratio,omitempty"`
-	StartDate    *string `json:"start_date,omitempty"`
-	DueDate      *string `json:"due_date,omitempty"`
-	Notes        *string `json:"notes,omitempty"`
+	Subject      *string            `json:"subject,omitempty"`
+	Description  *string            `json:"description,omitempty"`
+	StatusID     *int               `json:"status_id,omitempty"`
+	PriorityID   *int               `json:"priority_id,omitempty"`
+	AssignedToID *string            `json:"assigned_to_id,omitempty"`
+	DoneRatio    *int               `json:"done_ratio,omitempty"`
+	StartDate    *string            `json:"start_date,omitempty"`
+	DueDate      *string            `json:"due_date,omitempty"`
+	Notes        *string            `json:"notes,omitempty"`
+	CustomFields []CustomFieldValue `json:"custom_fields,omitempty"`
 }
 
 // TimeEntry is a logged time entry returned by the API.

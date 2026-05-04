@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,6 +12,39 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/api"
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
+
+// parseCustomFields converts repeated --cf "id=value" strings into typed
+// CustomFieldValue entries. It rejects malformed inputs and duplicate IDs.
+func parseCustomFields(specs []string) ([]api.CustomFieldValue, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	out := make([]api.CustomFieldValue, 0, len(specs))
+	seen := make(map[int]bool, len(specs))
+	for _, s := range specs {
+		parts := strings.SplitN(s, "=", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("--cf %q: expected id=value", s)
+		}
+		idStr := parts[0]
+		if idStr == "" {
+			return nil, fmt.Errorf("--cf %q: id is empty", s)
+		}
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("--cf %q: id %q is not an integer", s, idStr)
+		}
+		if id <= 0 {
+			return nil, fmt.Errorf("--cf %q: id must be positive", s)
+		}
+		if seen[id] {
+			return nil, fmt.Errorf("duplicate --cf id %d", id)
+		}
+		seen[id] = true
+		out = append(out, api.CustomFieldValue{ID: id, Value: parts[1]})
+	}
+	return out, nil
+}
 
 // dateRE validates YYYY-MM-DD strings used in --start-date / --due-date.
 var dateRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
@@ -130,6 +164,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 		project, subject, description, assignee, startDate, dueDate string
 		tracker, status, priority, parent, done                     int
 		confirm                                                     bool
+		cfStrs                                                      []string
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -153,6 +188,10 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 			if cmd.Flags().Changed("done") && (done < 0 || done > 100) {
 				return fmt.Errorf("--done must be between 0 and 100")
 			}
+			cfs, err := parseCustomFields(cfStrs)
+			if err != nil {
+				return err
+			}
 
 			payload := api.IssueCreate{
 				ProjectID:     project,
@@ -166,6 +205,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 				StartDate:     startDate,
 				DueDate:       dueDate,
 				DoneRatio:     done,
+				CustomFields:  cfs,
 			}
 			body := map[string]any{"issue": payload}
 			if !confirm {
@@ -189,15 +229,17 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&startDate, "start-date", "", "Start date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
+	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }
 
 func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	var (
-		subject, description, assignee, notes, startDate, dueDate string
-		status, priority, done                                    int
-		confirm                                                   bool
+		subject, description, assignee, notes, notesFile, startDate, dueDate string
+		status, priority, done                                               int
+		confirm                                                              bool
+		cfStrs                                                               []string
 	)
 	cmd := &cobra.Command{
 		Use:   "update <id>",
@@ -209,7 +251,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("invalid issue id %q", args[0])
 			}
 
-			mutating := []string{"subject", "description", "status", "assignee", "priority", "done", "notes", "start-date", "due-date"}
+			mutating := []string{"subject", "description", "status", "assignee", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf"}
 			anySet := false
 			for _, n := range mutating {
 				if cmd.Flags().Changed(n) {
@@ -221,6 +263,17 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("at least one of %s must be provided", strings.Join(mutating, ", "))
 			}
 
+			if cmd.Flags().Changed("notes") && cmd.Flags().Changed("notes-file") {
+				return fmt.Errorf("--notes and --notes-file are mutually exclusive")
+			}
+			if cmd.Flags().Changed("notes-file") {
+				data, err := os.ReadFile(notesFile)
+				if err != nil {
+					return fmt.Errorf("reading --notes-file %q: %w", notesFile, err)
+				}
+				notes = string(data)
+			}
+
 			if startDate != "" && !dateRE.MatchString(startDate) {
 				return fmt.Errorf("--start-date must be YYYY-MM-DD")
 			}
@@ -229,6 +282,10 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			}
 			if cmd.Flags().Changed("done") && (done < 0 || done > 100) {
 				return fmt.Errorf("--done must be between 0 and 100")
+			}
+			cfs, err := parseCustomFields(cfStrs)
+			if err != nil {
+				return err
 			}
 
 			var payload api.IssueUpdate
@@ -250,7 +307,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			if cmd.Flags().Changed("done") {
 				payload.DoneRatio = &done
 			}
-			if cmd.Flags().Changed("notes") {
+			if cmd.Flags().Changed("notes") || cmd.Flags().Changed("notes-file") {
 				payload.Notes = &notes
 			}
 			if cmd.Flags().Changed("start-date") {
@@ -258,6 +315,9 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			}
 			if cmd.Flags().Changed("due-date") {
 				payload.DueDate = &dueDate
+			}
+			if len(cfs) > 0 {
+				payload.CustomFields = cfs
 			}
 
 			body := map[string]any{"issue": payload}
@@ -283,8 +343,10 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().IntVar(&priority, "priority", 0, "New priority ID")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
 	cmd.Flags().StringVar(&notes, "notes", "", "Add a journal note")
+	cmd.Flags().StringVar(&notesFile, "notes-file", "", "Read journal note from file (mutually exclusive with --notes)")
 	cmd.Flags().StringVar(&startDate, "start-date", "", "New start date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "New due date (YYYY-MM-DD)")
+	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }

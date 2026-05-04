@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -268,5 +270,212 @@ func TestIssuesGet_Markdown(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "# #7 Subj") {
 		t.Errorf("markdown header missing:\n%s", out.String())
+	}
+}
+
+func TestIssuesUpdate_NotesFile_DryRun(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode")
+	})
+	defer stop()
+
+	dir := t.TempDir()
+	notesPath := filepath.Join(dir, "notes.txt")
+	contents := "Line 1\nLine 2\n   trailing spaces   \n\n"
+	if err := os.WriteFile(notesPath, []byte(contents), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--notes-file", notesPath})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	if issue["notes"] != contents {
+		t.Errorf("notes mismatch.\nwant: %q\ngot:  %q", contents, issue["notes"])
+	}
+}
+
+func TestIssuesUpdate_NotesFile_ConflictsWithNotes(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called for validation errors")
+	})
+	defer stop()
+
+	dir := t.TempDir()
+	notesPath := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(notesPath, []byte("hi"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--notes", "x", "--notes-file", notesPath})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "--notes") || !strings.Contains(err.Error(), "--notes-file") {
+		t.Errorf("err=%q, want mentions of --notes and --notes-file", err.Error())
+	}
+}
+
+func TestIssuesUpdate_NotesFile_ReadError(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called for read errors")
+	})
+	defer stop()
+
+	missing := filepath.Join(t.TempDir(), "does-not-exist.txt")
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--notes-file", missing})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("err=%q, want mention of path %q", err.Error(), missing)
+	}
+}
+
+func TestIssuesCreate_CustomFields_InBody(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode")
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create",
+		"--project", "p", "--tracker", "2", "--subject", "s",
+		"--cf", "1=hello", "--cf", "2=world"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	cfs, ok := issue["custom_fields"].([]any)
+	if !ok {
+		t.Fatalf("custom_fields not a list: %v", issue["custom_fields"])
+	}
+	if len(cfs) != 2 {
+		t.Fatalf("expected 2 custom fields, got %d", len(cfs))
+	}
+	first, _ := cfs[0].(map[string]any)
+	second, _ := cfs[1].(map[string]any)
+	if first["id"].(float64) != 1 || first["value"] != "hello" {
+		t.Errorf("first cf wrong: %v", first)
+	}
+	if second["id"].(float64) != 2 || second["value"] != "world" {
+		t.Errorf("second cf wrong: %v", second)
+	}
+}
+
+func TestIssuesUpdate_CustomFields_InBody(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode")
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7",
+		"--cf", "3=alpha", "--cf", "4=beta"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	cfs, ok := issue["custom_fields"].([]any)
+	if !ok {
+		t.Fatalf("custom_fields not a list: %v", issue["custom_fields"])
+	}
+	if len(cfs) != 2 {
+		t.Fatalf("expected 2 custom fields, got %d", len(cfs))
+	}
+	first, _ := cfs[0].(map[string]any)
+	if first["id"].(float64) != 3 || first["value"] != "alpha" {
+		t.Errorf("first cf wrong: %v", first)
+	}
+}
+
+func TestIssuesCreate_CustomFields_DuplicateID_Errors(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called for validation errors")
+	})
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create",
+		"--project", "p", "--tracker", "2", "--subject", "s",
+		"--cf", "5=a", "--cf", "5=b"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "duplicate") || !strings.Contains(err.Error(), "5") {
+		t.Errorf("err=%q, want duplicate id 5 mention", err.Error())
+	}
+}
+
+func TestIssuesCreate_CustomFields_BadFormat(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called for validation errors")
+	})
+	defer stop()
+
+	cases := []struct {
+		name string
+		val  string
+	}{
+		{"no equals", "foo"},
+		{"non-numeric id", "abc=val"},
+		{"zero id", "0=val"},
+		{"negative id", "-1=val"},
+		{"empty id", "=val"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+			root := buildRootForTest(rc)
+			root.SetArgs([]string{"issues", "create",
+				"--project", "p", "--tracker", "2", "--subject", "s",
+				"--cf", tc.val})
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("expected error for %q, got nil", tc.val)
+			}
+			if !strings.Contains(err.Error(), "--cf") {
+				t.Errorf("err=%q, want mention of --cf", err.Error())
+			}
+		})
 	}
 }
