@@ -10,7 +10,7 @@ test:
 	go test ./...
 
 generate:
-	oapi-codegen -config api/oapi-codegen.yaml api/openapi.yaml
+	@echo "codegen disabled -- see api/SOURCE.md"
 
 fmt:
 	go fmt ./...

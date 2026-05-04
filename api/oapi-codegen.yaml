@@ -1,0 +1,11 @@
+package: client
+output: internal/client/client.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true
+  include-tags:
+    - Issues
+    - Projects
+    - Attachments
