@@ -23,6 +23,7 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 		project, status, assignee, updatedSince, sort string
 		limit, offset                                 int
 		all                                           bool
+		includes                                      []string
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -42,6 +43,7 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 				Sort:       sort,
 				Limit:      limit,
 				Offset:     offset,
+				Include:    includes,
 			}
 			if updatedSince != "" {
 				p.UpdatedOn = ">=" + updatedSince
@@ -74,6 +76,7 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().IntVar(&limit, "limit", 25, "Max results per page (1-100)")
 	cmd.Flags().IntVar(&offset, "offset", 0, "Pagination offset")
 	cmd.Flags().BoolVar(&all, "all", false, "Fetch all pages")
+	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: attachments, relations")
 	return cmd
 }
 

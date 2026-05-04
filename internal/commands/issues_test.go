@@ -32,6 +32,26 @@ func TestIssuesList_FiltersAndJSON(t *testing.T) {
 	}
 }
 
+func TestIssuesList_IncludePassedAsQuery(t *testing.T) {
+	var seen string
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = r.URL.RawQuery
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "list", "--include", "attachments,relations"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(seen, "include=attachments%2Crelations") {
+		t.Errorf("query missing include: %s", seen)
+	}
+}
+
 func TestIssuesGet_Markdown(t *testing.T) {
 	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"issue":{"id":7,"subject":"Subj","description":"Body","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"}}}`))
