@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -11,10 +12,14 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
+// dateRE validates YYYY-MM-DD strings used in --start-date / --due-date.
+var dateRE = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+
 func newIssuesCmd(rc *runCtx) *cobra.Command {
 	c := &cobra.Command{Use: "issues", Short: "Issue operations"}
 	c.AddCommand(newIssuesListCmd(rc))
 	c.AddCommand(newIssuesGetCmd(rc))
+	c.AddCommand(newIssuesCreateCmd(rc))
 	return c
 }
 
@@ -117,6 +122,74 @@ func renderIssueList(rc *runCtx, issues []api.Issue) error {
 		return output.MarkdownTable(rc.out, []string{"ID", "Project", "Tracker", "Status", "Subject"}, rows)
 	}
 	return output.JSON(rc.out, map[string]any{"issues": issues})
+}
+
+func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
+	var (
+		project, subject, description, assignee, startDate, dueDate string
+		tracker, status, priority, parent, done                     int
+		confirm                                                     bool
+	)
+	cmd := &cobra.Command{
+		Use:   "create",
+		Short: "Create a new issue (requires --confirm to send)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if project == "" {
+				return fmt.Errorf("--project is required")
+			}
+			if tracker <= 0 {
+				return fmt.Errorf("--tracker is required")
+			}
+			if subject == "" {
+				return fmt.Errorf("--subject is required")
+			}
+			if startDate != "" && !dateRE.MatchString(startDate) {
+				return fmt.Errorf("--start-date must be YYYY-MM-DD")
+			}
+			if dueDate != "" && !dateRE.MatchString(dueDate) {
+				return fmt.Errorf("--due-date must be YYYY-MM-DD")
+			}
+			if cmd.Flags().Changed("done") && (done < 0 || done > 100) {
+				return fmt.Errorf("--done must be between 0 and 100")
+			}
+
+			payload := api.IssueCreate{
+				ProjectID:     project,
+				TrackerID:     tracker,
+				Subject:       subject,
+				Description:   description,
+				StatusID:      status,
+				PriorityID:    priority,
+				AssignedToID:  assignee,
+				ParentIssueID: parent,
+				StartDate:     startDate,
+				DueDate:       dueDate,
+				DoneRatio:     done,
+			}
+			body := map[string]any{"issue": payload}
+			if !confirm {
+				return renderDryRun(rc, "POST", "/issues.json", body)
+			}
+			issue, err := rc.client.CreateIssue(rc.ctx(), payload)
+			if err != nil {
+				return err
+			}
+			return renderIssueDetail(rc, issue)
+		},
+	}
+	cmd.Flags().StringVar(&project, "project", "", "Project identifier or ID (required)")
+	cmd.Flags().IntVar(&tracker, "tracker", 0, "Tracker ID (required)")
+	cmd.Flags().StringVar(&subject, "subject", "", "Subject (required)")
+	cmd.Flags().StringVar(&description, "description", "", "Description")
+	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee user ID or 'me'")
+	cmd.Flags().IntVar(&status, "status", 0, "Status ID")
+	cmd.Flags().IntVar(&priority, "priority", 0, "Priority ID")
+	cmd.Flags().IntVar(&parent, "parent", 0, "Parent issue ID")
+	cmd.Flags().StringVar(&startDate, "start-date", "", "Start date (YYYY-MM-DD)")
+	cmd.Flags().StringVar(&dueDate, "due-date", "", "Due date (YYYY-MM-DD)")
+	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
+	return cmd
 }
 
 func renderIssueDetail(rc *runCtx, is *api.Issue) error {
