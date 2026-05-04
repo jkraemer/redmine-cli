@@ -20,6 +20,7 @@ func buildRootForTest(rc *runCtx) *cobra.Command {
 	root.AddCommand(newProjectsCmd(rc))
 	root.AddCommand(newIssuesCmd(rc))
 	root.AddCommand(newAttachmentsCmd(rc))
+	root.AddCommand(newTimeCmd(rc))
 	return root
 }
 
