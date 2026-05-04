@@ -75,6 +75,11 @@ func Build(out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newIssuesCmd(rc))
 	root.AddCommand(newAttachmentsCmd(rc))
 	root.AddCommand(newTimeCmd(rc))
+	root.AddCommand(newUsersCmd(rc))
+	root.AddCommand(newTrackersCmd(rc))
+	root.AddCommand(newStatusesCmd(rc))
+	root.AddCommand(newPrioritiesCmd(rc))
+	root.AddCommand(newTimeActivitiesCmd(rc))
 
 	return root
 }
