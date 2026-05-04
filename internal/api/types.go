@@ -237,3 +237,34 @@ type ListUsersParams struct {
 	Limit  int
 	Offset int
 }
+
+// SearchResult is a single hit returned by /search.json.
+type SearchResult struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`
+	URL         string `json:"url,omitempty"`
+	Description string `json:"description,omitempty"`
+	Datetime    string `json:"datetime,omitempty"`
+}
+
+// SearchResults is the wrapped /search.json response.
+type SearchResults struct {
+	Results    []SearchResult `json:"results"`
+	TotalCount int            `json:"total_count"`
+	Offset     int            `json:"offset"`
+	Limit      int            `json:"limit"`
+}
+
+// SearchParams holds query params for /search.json.
+type SearchParams struct {
+	Q          string
+	Limit      int
+	Offset     int
+	Issues     bool
+	Wiki       bool
+	Projects   bool
+	TitlesOnly bool
+	Scope      string
+	ProjectID  string
+}

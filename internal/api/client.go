@@ -325,3 +325,40 @@ func (c *Client) LogTime(ctx context.Context, p TimeEntryCreate) (*TimeEntry, er
 	}
 	return &out.TimeEntry, nil
 }
+
+// Search queries /search.json. Filter flags (issues, wiki, projects,
+// titles_only) are only sent when set, so callers can let the server
+// apply its defaults by leaving them off.
+func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResults, error) {
+	q := url.Values{}
+	q.Set("q", p.Q)
+	if p.Issues {
+		q.Set("issues", "1")
+	}
+	if p.Wiki {
+		q.Set("wiki_pages", "1")
+	}
+	if p.Projects {
+		q.Set("projects", "1")
+	}
+	if p.TitlesOnly {
+		q.Set("titles_only", "1")
+	}
+	if p.Scope != "" {
+		q.Set("scope", p.Scope)
+	}
+	if p.ProjectID != "" {
+		q.Set("project_id", p.ProjectID)
+	}
+	if p.Limit > 0 {
+		q.Set("limit", strconv.Itoa(p.Limit))
+	}
+	if p.Offset > 0 {
+		q.Set("offset", strconv.Itoa(p.Offset))
+	}
+	var res SearchResults
+	if err := c.doJSON(ctx, "/search.json", q, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}

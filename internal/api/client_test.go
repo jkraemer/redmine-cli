@@ -323,6 +323,72 @@ func TestListActivities_OK(t *testing.T) {
 	}
 }
 
+func TestSearch_QueryAndFilters(t *testing.T) {
+	var seenQuery, seenPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenPath = r.URL.Path
+		seenQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":[{"id":7,"title":"#1459 (open): Build","type":"issue","url":"https://example.com/issues/1459","datetime":"2026-05-04T08:20:57Z"}],"total_count":1,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	res, err := c.Search(context.Background(), SearchParams{
+		Q:          "foo bar",
+		Issues:     true,
+		Wiki:       true,
+		Projects:   true,
+		TitlesOnly: true,
+		Scope:      "my_projects",
+		ProjectID:  "myproj",
+		Limit:      50,
+		Offset:     10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seenPath != "/search.json" {
+		t.Errorf("path=%s", seenPath)
+	}
+	// Accept either "+" (form encoding) or "%20" for the space.
+	if !strings.Contains(seenQuery, "q=foo+bar") && !strings.Contains(seenQuery, "q=foo%20bar") {
+		t.Errorf("missing q in query: %s", seenQuery)
+	}
+	for _, want := range []string{
+		"issues=1", "wiki_pages=1", "projects=1", "titles_only=1",
+		"scope=my_projects", "project_id=myproj",
+		"limit=50", "offset=10",
+	} {
+		if !strings.Contains(seenQuery, want) {
+			t.Errorf("query missing %q: %s", want, seenQuery)
+		}
+	}
+	if len(res.Results) != 1 || res.Results[0].Type != "issue" || res.Results[0].ID != 7 {
+		t.Errorf("decoded results wrong: %+v", res)
+	}
+}
+
+func TestSearch_OmitsUnsetFilters(t *testing.T) {
+	var seenQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"results":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	if _, err := c.Search(context.Background(), SearchParams{Q: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, unwanted := range []string{"issues=", "wiki_pages=", "projects=", "titles_only=", "scope=", "project_id=", "limit=", "offset="} {
+		if strings.Contains(seenQuery, unwanted) {
+			t.Errorf("query should not contain %q: %s", unwanted, seenQuery)
+		}
+	}
+}
+
 func TestLogTime_WrapsAndUnwraps(t *testing.T) {
 	var seenMethod, seenPath string
 	var seenBody map[string]any
