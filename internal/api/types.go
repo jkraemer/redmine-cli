@@ -160,3 +160,80 @@ type TimeEntryCreate struct {
 	SpentOn    string  `json:"spent_on,omitempty"`
 	Comments   string  `json:"comments,omitempty"`
 }
+
+// User is a Redmine user (subset used by the CLI).
+type User struct {
+	ID          int    `json:"id"`
+	Login       string `json:"login,omitempty"`
+	Firstname   string `json:"firstname,omitempty"`
+	Lastname    string `json:"lastname,omitempty"`
+	Mail        string `json:"mail,omitempty"`
+	CreatedOn   string `json:"created_on,omitempty"`
+	LastLoginOn string `json:"last_login_on,omitempty"`
+	Admin       bool   `json:"admin,omitempty"`
+}
+
+// ListUsersResult is the wrapped /users.json response.
+type ListUsersResult struct {
+	Users      []User `json:"users"`
+	TotalCount int    `json:"total_count"`
+	Offset     int    `json:"offset"`
+	Limit      int    `json:"limit"`
+}
+
+// Tracker is a Redmine tracker (issue type).
+type Tracker struct {
+	ID            int     `json:"id"`
+	Name          string  `json:"name"`
+	DefaultStatus *IDName `json:"default_status,omitempty"`
+	Description   string  `json:"description,omitempty"`
+}
+
+// ListTrackersResult is the wrapped /trackers.json response.
+type ListTrackersResult struct {
+	Trackers []Tracker `json:"trackers"`
+}
+
+// Status is a Redmine issue status.
+type Status struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	IsClosed bool   `json:"is_closed,omitempty"`
+}
+
+// ListStatusesResult is the wrapped /issue_statuses.json response.
+type ListStatusesResult struct {
+	IssueStatuses []Status `json:"issue_statuses"`
+}
+
+// Priority is a Redmine issue priority enumeration entry.
+type Priority struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default,omitempty"`
+	Active    bool   `json:"active,omitempty"`
+}
+
+// ListPrioritiesResult is the wrapped /enumerations/issue_priorities.json response.
+type ListPrioritiesResult struct {
+	IssuePriorities []Priority `json:"issue_priorities"`
+}
+
+// Activity is a Redmine time-entry activity enumeration entry.
+type Activity struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default,omitempty"`
+	Active    bool   `json:"active,omitempty"`
+}
+
+// ListActivitiesResult is the wrapped /enumerations/time_entry_activities.json response.
+type ListActivitiesResult struct {
+	TimeEntryActivities []Activity `json:"time_entry_activities"`
+}
+
+// ListUsersParams holds query params for /users.json.
+type ListUsersParams struct {
+	Limit  int
+	Offset int
+}

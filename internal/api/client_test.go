@@ -227,6 +227,102 @@ func TestUpdateIssue_PointerSemantics_OmitsUnsetFields(t *testing.T) {
 	}
 }
 
+func TestGetCurrentUser_OK(t *testing.T) {
+	body := `{"user":{"id":7,"login":"jens","firstname":"Jens","lastname":"K","mail":"jk@example.com","admin":true}}`
+	srv := newTestServer(t, 200, body)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	u, err := c.GetCurrentUser(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.ID != 7 || u.Login != "jens" || !u.Admin {
+		t.Errorf("unexpected: %+v", u)
+	}
+}
+
+func TestListUsers_OK(t *testing.T) {
+	body := `{"users":[{"id":1,"firstname":"A","lastname":"B","mail":"a@b.c"}],"total_count":1,"offset":0,"limit":25}`
+	srv := newTestServer(t, 200, body)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	res, err := c.ListUsers(context.Background(), ListUsersParams{Limit: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Users) != 1 || res.Users[0].Mail != "a@b.c" {
+		t.Errorf("unexpected: %+v", res)
+	}
+}
+
+func TestListTrackers_OK(t *testing.T) {
+	body := `{"trackers":[{"id":1,"name":"Bug","default_status":{"id":1,"name":"New"},"description":"a bug"}]}`
+	srv := newTestServer(t, 200, body)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	res, err := c.ListTrackers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Trackers) != 1 || res.Trackers[0].Name != "Bug" {
+		t.Errorf("unexpected: %+v", res)
+	}
+	if res.Trackers[0].DefaultStatus == nil || res.Trackers[0].DefaultStatus.Name != "New" {
+		t.Errorf("default_status not decoded: %+v", res.Trackers[0])
+	}
+}
+
+func TestListStatuses_OK(t *testing.T) {
+	body := `{"issue_statuses":[{"id":1,"name":"New","is_closed":false},{"id":5,"name":"Closed","is_closed":true}]}`
+	srv := newTestServer(t, 200, body)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	res, err := c.ListStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.IssueStatuses) != 2 {
+		t.Fatalf("got %d statuses", len(res.IssueStatuses))
+	}
+	if !res.IssueStatuses[1].IsClosed {
+		t.Errorf("expected second status closed: %+v", res.IssueStatuses[1])
+	}
+}
+
+func TestListPriorities_OK(t *testing.T) {
+	body := `{"issue_priorities":[{"id":3,"name":"Normal","is_default":true,"active":true}]}`
+	srv := newTestServer(t, 200, body)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	res, err := c.ListPriorities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.IssuePriorities) != 1 || !res.IssuePriorities[0].IsDefault {
+		t.Errorf("unexpected: %+v", res)
+	}
+}
+
+func TestListActivities_OK(t *testing.T) {
+	body := `{"time_entry_activities":[{"id":8,"name":"Development","is_default":true,"active":true}]}`
+	srv := newTestServer(t, 200, body)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	res, err := c.ListActivities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.TimeEntryActivities) != 1 || res.TimeEntryActivities[0].Name != "Development" {
+		t.Errorf("unexpected: %+v", res)
+	}
+}
+
 func TestLogTime_WrapsAndUnwraps(t *testing.T) {
 	var seenMethod, seenPath string
 	var seenBody map[string]any

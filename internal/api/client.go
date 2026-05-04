@@ -248,6 +248,69 @@ func (c *Client) UpdateIssue(ctx context.Context, id int, p IssueUpdate) error {
 	return c.doWriteJSON(ctx, "PUT", fmt.Sprintf("/issues/%d.json", id), in, nil)
 }
 
+// GetCurrentUser fetches /users/current.json.
+func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
+	var wrapper struct {
+		User User `json:"user"`
+	}
+	if err := c.doJSON(ctx, "/users/current.json", nil, &wrapper); err != nil {
+		return nil, err
+	}
+	return &wrapper.User, nil
+}
+
+// ListUsers lists users via /users.json. On most installs this is admin-only.
+func (c *Client) ListUsers(ctx context.Context, p ListUsersParams) (*ListUsersResult, error) {
+	q := url.Values{}
+	if p.Limit > 0 {
+		q.Set("limit", strconv.Itoa(p.Limit))
+	}
+	if p.Offset > 0 {
+		q.Set("offset", strconv.Itoa(p.Offset))
+	}
+	var res ListUsersResult
+	if err := c.doJSON(ctx, "/users.json", q, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// ListTrackers lists trackers via /trackers.json.
+func (c *Client) ListTrackers(ctx context.Context) (*ListTrackersResult, error) {
+	var res ListTrackersResult
+	if err := c.doJSON(ctx, "/trackers.json", nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// ListStatuses lists issue statuses via /issue_statuses.json.
+func (c *Client) ListStatuses(ctx context.Context) (*ListStatusesResult, error) {
+	var res ListStatusesResult
+	if err := c.doJSON(ctx, "/issue_statuses.json", nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// ListPriorities lists issue priorities via /enumerations/issue_priorities.json.
+func (c *Client) ListPriorities(ctx context.Context) (*ListPrioritiesResult, error) {
+	var res ListPrioritiesResult
+	if err := c.doJSON(ctx, "/enumerations/issue_priorities.json", nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// ListActivities lists time-entry activities via /enumerations/time_entry_activities.json.
+func (c *Client) ListActivities(ctx context.Context) (*ListActivitiesResult, error) {
+	var res ListActivitiesResult
+	if err := c.doJSON(ctx, "/enumerations/time_entry_activities.json", nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // LogTime posts a new time entry. The payload is wrapped in
 // {"time_entry": ...} on the wire and the response is unwrapped.
 func (c *Client) LogTime(ctx context.Context, p TimeEntryCreate) (*TimeEntry, error) {
