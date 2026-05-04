@@ -1,0 +1,6 @@
+/redmine-cli
+/dist/
+.env
+*.test
+*.out
+.DS_Store
