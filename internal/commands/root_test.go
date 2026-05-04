@@ -5,7 +5,23 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
+
+// buildRootForTest returns a minimal root command with the runCtx pre-populated.
+// It bypasses PersistentPreRunE so tests can inject *api.Client directly without
+// needing real config or environment variables.
+func buildRootForTest(rc *runCtx) *cobra.Command {
+	root := &cobra.Command{Use: "redmine-cli", SilenceUsage: true, SilenceErrors: true}
+	root.SetOut(rc.out)
+	root.SetErr(rc.errOut)
+	root.PersistentPreRunE = func(_ *cobra.Command, _ []string) error { return nil }
+	root.AddCommand(newProjectsCmd(rc))
+	root.AddCommand(newIssuesCmd(rc))
+	root.AddCommand(newAttachmentsCmd(rc))
+	return root
+}
 
 func TestRoot_AgentHelp(t *testing.T) {
 	var out, errOut bytes.Buffer
