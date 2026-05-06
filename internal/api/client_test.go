@@ -8,8 +8,113 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
+
+// M3: a 429 with Retry-After should sleep that long and retry once for GETs.
+// We deliberately do NOT retry mutating calls (POST/PUT) to avoid duplicates.
+func TestDo_Retries429WithRetryAfter(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&calls, 1)
+		if n == 1 {
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(429)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"projects":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	start := time.Now()
+	_, err := c.ListProjects(context.Background(), ListProjectsParams{})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatalf("expected retry to succeed: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Errorf("expected 2 calls (one retry), got %d", got)
+	}
+	if elapsed < 900*time.Millisecond {
+		t.Errorf("expected at least ~1s wait, got %v", elapsed)
+	}
+}
+
+// 429 without Retry-After should not be retried — we have no idea how long
+// to wait, so surfacing the error is more correct than guessing.
+func TestDo_DoesNotRetry429WithoutRetryAfter(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.WriteHeader(429)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	_, err := c.ListProjects(context.Background(), ListProjectsParams{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("expected single call, got %d", got)
+	}
+	var apiErr *Error
+	if !errors.As(err, &apiErr) || apiErr.Status != 429 {
+		t.Errorf("expected 429 *Error, got %v", err)
+	}
+}
+
+// A Retry-After larger than our cap should not be respected — the CLI is
+// interactive enough that an hours-long sleep is worse than failing fast.
+func TestDo_DoesNotRetry429WithExcessiveRetryAfter(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.Header().Set("Retry-After", "3600")
+		w.WriteHeader(429)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	_, err := c.ListProjects(context.Background(), ListProjectsParams{})
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Errorf("expected single call, got %d", got)
+	}
+}
+
+// M1: production HTTP client must set per-phase timeouts so a server that
+// hangs at TCP, TLS, or response-header time can't lock up the CLI. We
+// deliberately leave the body read uncapped so streaming large attachments
+// still works.
+func TestDefaultHTTPClient_HasPhaseTimeouts(t *testing.T) {
+	c := DefaultHTTPClient()
+	if c == nil || c.Transport == nil {
+		t.Fatal("DefaultHTTPClient returned nil or no Transport")
+	}
+	tr, ok := c.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Transport=%T, want *http.Transport", c.Transport)
+	}
+	if tr.TLSHandshakeTimeout == 0 {
+		t.Error("TLSHandshakeTimeout is zero")
+	}
+	if tr.ResponseHeaderTimeout == 0 {
+		t.Error("ResponseHeaderTimeout is zero")
+	}
+	if tr.ExpectContinueTimeout == 0 {
+		t.Error("ExpectContinueTimeout is zero")
+	}
+	if c.Timeout != 0 {
+		t.Errorf("Client.Timeout=%v; want 0 so streaming attachments are not capped", c.Timeout)
+	}
+}
 
 func newTestServer(t *testing.T, status int, body string) *httptest.Server {
 	t.Helper()

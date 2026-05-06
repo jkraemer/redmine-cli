@@ -12,10 +12,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Client is the Redmine HTTP client.
@@ -26,49 +28,127 @@ type Client struct {
 	http    *http.Client
 }
 
-// New creates a Client using an API key.
+// New creates a Client using an API key. If httpClient is nil,
+// DefaultHTTPClient is used.
 func New(baseURL, apiKey string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = DefaultHTTPClient()
 	}
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, http: httpClient}
 }
 
 // NewWithToken creates a Client authenticating via an OAuth Bearer token.
+// If httpClient is nil, DefaultHTTPClient is used.
 func NewWithToken(baseURL, token string, httpClient *http.Client) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = DefaultHTTPClient()
 	}
 	return &Client{baseURL: strings.TrimRight(baseURL, "/"), token: token, http: httpClient}
 }
 
-const maxBodyExcerpt = 512
+// DefaultHTTPClient returns an *http.Client configured with per-phase
+// timeouts (dial, TLS handshake, response headers) but no overall body
+// timeout, so streaming a large attachment to disk is not artificially
+// capped. Cancellation of the surrounding context still applies.
+func DefaultHTTPClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   10 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+			ForceAttemptHTTP2:     true,
+		},
+	}
+}
+
+const (
+	maxBodyExcerpt = 512
+	// maxRetryAfter caps how long we will sleep on a 429 Retry-After
+	// before giving up. The CLI is interactive enough that a multi-minute
+	// stall is worse than failing fast and letting the caller decide.
+	maxRetryAfter = 60 * time.Second
+)
 
 func (c *Client) do(ctx context.Context, method, path string, q url.Values) (*http.Response, error) {
 	full := c.baseURL + path
 	if q != nil && len(q) > 0 {
 		full += "?" + q.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, method, full, nil)
-	if err != nil {
-		return nil, err
+	attempt := 0
+	for {
+		attempt++
+		req, err := http.NewRequestWithContext(ctx, method, full, nil)
+		if err != nil {
+			return nil, err
+		}
+		c.setAuthHeader(req)
+		req.Header.Set("Accept", "application/json")
+		resp, err := c.http.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		// Retry once on 429 if Retry-After tells us a tolerable wait.
+		// We only retry GETs here (do() is the GET path); mutating calls
+		// go through doWriteJSON and never auto-retry.
+		if resp.StatusCode == http.StatusTooManyRequests && attempt == 1 {
+			if wait, ok := parseRetryAfter(resp.Header.Get("Retry-After")); ok && wait <= maxRetryAfter {
+				_ = resp.Body.Close()
+				select {
+				case <-time.After(wait):
+					continue
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+		}
+		if resp.StatusCode >= 400 {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyExcerpt))
+			_ = resp.Body.Close()
+			return nil, &Error{Status: resp.StatusCode, Body: string(body), URL: full}
+		}
+		return resp, nil
 	}
+}
+
+// setAuthHeader applies the right credential header for this Client:
+// a Bearer token when configured (OAuth path), otherwise the legacy
+// X-Redmine-API-Key header.
+func (c *Client) setAuthHeader(req *http.Request) {
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
-	} else {
-		req.Header.Set("X-Redmine-API-Key", c.apiKey)
+		return
 	}
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, err
+	req.Header.Set("X-Redmine-API-Key", c.apiKey)
+}
+
+// parseRetryAfter accepts the two RFC-7231 formats: an integer number of
+// seconds, or an HTTP-date. Returns (wait, true) on success. Negative or
+// zero waits are clamped to zero so the retry happens immediately.
+func parseRetryAfter(v string) (time.Duration, bool) {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0, false
 	}
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyExcerpt))
-		_ = resp.Body.Close()
-		return nil, &Error{Status: resp.StatusCode, Body: string(body), URL: full}
+	if secs, err := strconv.Atoi(v); err == nil {
+		if secs < 0 {
+			secs = 0
+		}
+		return time.Duration(secs) * time.Second, true
 	}
-	return resp, nil
+	if t, err := http.ParseTime(v); err == nil {
+		d := time.Until(t)
+		if d < 0 {
+			d = 0
+		}
+		return d, true
+	}
+	return 0, false
 }
 
 func (c *Client) doJSON(ctx context.Context, path string, q url.Values, out any) error {
@@ -101,12 +181,7 @@ func (c *Client) doWriteJSON(ctx context.Context, method, path string, payload, 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Redmine-API-Key", c.apiKey)
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	} else {
-		req.Header.Set("X-Redmine-API-Key", c.apiKey)
-	}
+	c.setAuthHeader(req)
 	req.Header.Set("Accept", "application/json")
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -233,7 +308,7 @@ func (c *Client) GetAttachment(ctx context.Context, id int) (*Attachment, io.Rea
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	c.setAuthHeader(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, nil, err
