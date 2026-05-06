@@ -301,3 +301,11 @@ type WikiPage struct {
 type ListWikiPagesResult struct {
 	WikiPages []WikiPageSummary `json:"wiki_pages"`
 }
+
+// WikiPageWrite is the payload for PUT /projects/{id}/wiki/{title}.json.
+// Redmine uses PUT for both create and update (idempotent).
+// Wrap in {"wiki_page": ...} when sending.
+type WikiPageWrite struct {
+	Text     string `json:"text"`
+	Comments string `json:"comments,omitempty"`
+}

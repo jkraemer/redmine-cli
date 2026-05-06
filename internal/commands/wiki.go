@@ -2,9 +2,11 @@ package commands
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/jkraemer/redmine-cli/internal/api"
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
@@ -15,6 +17,7 @@ func newWikiCmd(rc *runCtx) *cobra.Command {
 	}
 	cmd.AddCommand(newWikiListCmd(rc))
 	cmd.AddCommand(newWikiGetCmd(rc))
+	cmd.AddCommand(newWikiPutCmd(rc))
 	return cmd
 }
 
@@ -79,5 +82,62 @@ func newWikiGetCmd(rc *runCtx) *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Project ID or identifier (required)")
 	_ = cmd.MarkFlagRequired("project")
+	return cmd
+}
+
+func newWikiPutCmd(rc *runCtx) *cobra.Command {
+	var projectID, text, textFile, comments string
+	var confirm bool
+
+	cmd := &cobra.Command{
+		Use:   "put <title>",
+		Short: "Create or update a wiki page (--project required; dry-run unless --confirm)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			title := args[0]
+
+			if cmd.Flags().Changed("text") && cmd.Flags().Changed("text-file") {
+				return fmt.Errorf("--text and --text-file are mutually exclusive")
+			}
+			if !cmd.Flags().Changed("text") && !cmd.Flags().Changed("text-file") {
+				return fmt.Errorf("one of --text or --text-file is required")
+			}
+			if cmd.Flags().Changed("text-file") {
+				data, err := os.ReadFile(textFile)
+				if err != nil {
+					return fmt.Errorf("reading --text-file %q: %w", textFile, err)
+				}
+				text = string(data)
+			}
+
+			payload := api.WikiPageWrite{Text: text, Comments: comments}
+			body := map[string]any{"wiki_page": payload}
+			path := fmt.Sprintf("/projects/%s/wiki/%s.json", projectID, title)
+
+			if !confirm {
+				return renderDryRun(rc, "PUT", path, body)
+			}
+
+			page, err := rc.client.PutWikiPage(rc.ctx(), projectID, title, payload)
+			if err != nil {
+				return err
+			}
+			if rc.format == "json" {
+				return output.JSON(rc.out, page)
+			}
+			if page != nil {
+				fmt.Fprintf(rc.out, "Wiki page %q saved (version %d).\n", page.Title, page.Version)
+			} else {
+				fmt.Fprintf(rc.out, "Wiki page %q saved.\n", title)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Project ID or identifier (required)")
+	_ = cmd.MarkFlagRequired("project")
+	cmd.Flags().StringVar(&text, "text", "", "Page content (Textile markup)")
+	cmd.Flags().StringVar(&textFile, "text-file", "", "Read page content from file (mutually exclusive with --text)")
+	cmd.Flags().StringVar(&comments, "comments", "", "Edit summary / comment")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }

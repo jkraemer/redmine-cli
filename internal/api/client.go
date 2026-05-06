@@ -386,3 +386,23 @@ func (c *Client) GetWikiPage(ctx context.Context, projectID, title string) (*Wik
 	}
 	return &wrapper.WikiPage, nil
 }
+
+// PutWikiPage creates or updates a wiki page via PUT (Redmine uses PUT for both).
+// Returns the current page content after the write, or nil on 204 No Content.
+func (c *Client) PutWikiPage(ctx context.Context, projectID, title string, p WikiPageWrite) (*WikiPage, error) {
+	in := struct {
+		WikiPage WikiPageWrite `json:"wiki_page"`
+	}{WikiPage: p}
+	var out struct {
+		WikiPage WikiPage `json:"wiki_page"`
+	}
+	path := fmt.Sprintf("/projects/%s/wiki/%s.json", url.PathEscape(projectID), url.PathEscape(title))
+	if err := c.doWriteJSON(ctx, "PUT", path, in, &out); err != nil {
+		return nil, err
+	}
+	if out.WikiPage.Title == "" {
+		// Redmine returned 204 No Content — fetch the page to return current state.
+		return c.GetWikiPage(ctx, projectID, title)
+	}
+	return &out.WikiPage, nil
+}
