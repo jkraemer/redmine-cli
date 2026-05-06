@@ -22,19 +22,24 @@ import (
 type Client struct {
 	baseURL string
 	apiKey  string
+	token   string // OAuth Bearer token (takes priority over apiKey when set)
 	http    *http.Client
 }
 
-// New creates a Client. If httpClient is nil, http.DefaultClient is used.
+// New creates a Client using an API key.
 func New(baseURL, apiKey string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		apiKey:  apiKey,
-		http:    httpClient,
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, http: httpClient}
+}
+
+// NewWithToken creates a Client authenticating via an OAuth Bearer token.
+func NewWithToken(baseURL, token string, httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
 	}
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), token: token, http: httpClient}
 }
 
 const maxBodyExcerpt = 512
@@ -48,7 +53,11 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values) (*ht
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	} else {
+		req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	}
 	req.Header.Set("Accept", "application/json")
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -93,6 +102,11 @@ func (c *Client) doWriteJSON(ctx context.Context, method, path string, payload, 
 		return err
 	}
 	req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	} else {
+		req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	}
 	req.Header.Set("Accept", "application/json")
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")

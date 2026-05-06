@@ -13,6 +13,7 @@ import (
 
 	"github.com/jkraemer/redmine-cli/internal/agenthelp"
 	"github.com/jkraemer/redmine-cli/internal/api"
+	"github.com/jkraemer/redmine-cli/internal/auth"
 	"github.com/jkraemer/redmine-cli/internal/config"
 )
 
@@ -60,6 +61,10 @@ func Build(out, errOut io.Writer) *cobra.Command {
 		if cmd.Name() == "help" || cmd.Name() == "redmine-cli" {
 			return nil
 		}
+		// Auth subcommands manage the token themselves; skip client init.
+		if cmd.Parent() != nil && cmd.Parent().Name() == "auth" {
+			return nil
+		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
@@ -67,7 +72,27 @@ func Build(out, errOut io.Writer) *cobra.Command {
 		if rc.format == "" {
 			rc.format = cfg.DefaultFormat
 		}
-		rc.client = api.New(cfg.URL, cfg.APIKey, http.DefaultClient)
+		if cfg.AuthMethod() == "oauth" {
+			tok, err := auth.LoadToken()
+			if err != nil {
+				return fmt.Errorf("loading OAuth token: %w", err)
+			}
+			if tok == nil {
+				return fmt.Errorf("not authenticated — run: redmine-cli auth login")
+			}
+			if tok.Expired() && tok.RefreshToken != "" {
+				tok, err = auth.Refresh(cfg.URL, cfg.OAuthClientID, tok.RefreshToken)
+				if err != nil {
+					return fmt.Errorf("token refresh failed: %w (run: redmine-cli auth login)", err)
+				}
+				if err := auth.SaveToken(tok); err != nil {
+					return err
+				}
+			}
+			rc.client = api.NewWithToken(cfg.URL, tok.AccessToken, http.DefaultClient)
+		} else {
+			rc.client = api.New(cfg.URL, cfg.APIKey, http.DefaultClient)
+		}
 		return nil
 	}
 
@@ -82,6 +107,7 @@ func Build(out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTimeActivitiesCmd(rc))
 	root.AddCommand(newSearchCmd(rc))
 	root.AddCommand(newWikiCmd(rc))
+	root.AddCommand(newAuthCmd(rc))
 
 	return root
 }

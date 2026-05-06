@@ -55,7 +55,7 @@ func Load() (*Config, error) {
 	if cfg.URL == "" {
 		return nil, ErrMissingURL
 	}
-	if cfg.APIKey == "" {
+	if cfg.APIKey == "" && cfg.OAuthClientID == "" {
 		return nil, ErrMissingAPIKey
 	}
 	return cfg, nil
@@ -69,6 +69,14 @@ func configPath() string {
 		return filepath.Join(home, ".config", "redmine-cli", "config.toml")
 	}
 	return ""
+}
+
+// AuthMethod returns "oauth" if oauth_client_id is configured, else "apikey".
+func (c *Config) AuthMethod() string {
+	if c.OAuthClientID != "" {
+		return "oauth"
+	}
+	return "apikey"
 }
 
 func firstNonEmpty(vals ...string) string {
