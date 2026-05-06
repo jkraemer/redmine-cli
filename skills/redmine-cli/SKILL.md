@@ -77,10 +77,18 @@ Wiki pages are always scoped to a project (`--project` is required).
 | Get a page by title | `redmine-cli wiki get Architecture --project myproj` |
 | Get a page as JSON | `redmine-cli wiki get Architecture --project myproj --format json` |
 
+| Create or update a page | `redmine-cli wiki put MyPage --project myproj --text "h1. Hello"` |
+| Create from file | `redmine-cli wiki put MyPage --project myproj --text-file page.textile --comments "Initial draft"` |
+| Actually send (not dry-run) | append `--confirm` |
+
 Notes:
 - Page titles are case-sensitive and match the Redmine URL slug (e.g. `Database-Model`).
 - `wiki get` includes attachments in the response automatically.
 - A 404 means either the page doesn't exist or the Wiki module is not enabled for that project.
+- `wiki put` uses idempotent PUT — it **creates** the page if it doesn't exist, **updates** it if it does.
+- **Write ops are dry-run by default.** Always inspect the preview before adding `--confirm`.
+- `--text` and `--text-file` are mutually exclusive; exactly one is required.
+- Page content uses Redmine Textile markup.
 
 ## Quick Reference — Read
 
