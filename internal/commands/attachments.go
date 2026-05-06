@@ -12,6 +12,20 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
+// sanitizeAttachmentFilename reduces a server-supplied filename to a single
+// path component safe to append to a chosen output directory. It strips any
+// directory parts and rejects names that don't carry a usable basename
+// (empty, ".", ".."). The Redmine server is the source of meta.Filename, so
+// we treat it as untrusted: a malicious or compromised server otherwise
+// could direct writes outside of $TMPDIR/redmine-cli.
+func sanitizeAttachmentFilename(name string) (string, error) {
+	base := filepath.Base(filepath.Clean(name))
+	if base == "" || base == "." || base == ".." || base == string(filepath.Separator) {
+		return "", fmt.Errorf("attachment filename %q is not a usable name", name)
+	}
+	return base, nil
+}
+
 func newAttachmentsCmd(rc *runCtx) *cobra.Command {
 	c := &cobra.Command{Use: "attachments", Short: "Attachment operations"}
 	c.AddCommand(newAttachmentsDownloadCmd(rc))
@@ -37,11 +51,15 @@ func newAttachmentsDownloadCmd(rc *runCtx) *cobra.Command {
 
 			dest := outPath
 			if dest == "" {
+				safeName, err := sanitizeAttachmentFilename(meta.Filename)
+				if err != nil {
+					return err
+				}
 				dir := filepath.Join(os.TempDir(), "redmine-cli")
 				if err := os.MkdirAll(dir, 0o755); err != nil {
 					return err
 				}
-				dest = filepath.Join(dir, fmt.Sprintf("%d-%s", meta.ID, meta.Filename))
+				dest = filepath.Join(dir, fmt.Sprintf("%d-%s", meta.ID, safeName))
 			}
 
 			f, err := os.Create(dest)

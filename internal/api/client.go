@@ -211,6 +211,11 @@ func (c *Client) GetIssue(ctx context.Context, id int, p *GetIssueParams) (*Issu
 
 // GetAttachment fetches metadata for an attachment and returns an open
 // reader for the file content. The caller must close the body.
+//
+// Redmine returns content_url in the metadata response, which we then fetch
+// with the API key attached. We refuse to follow content_url to a different
+// origin than the configured baseURL, so a compromised or misbehaving server
+// can't redirect us into leaking the API key off-host.
 func (c *Client) GetAttachment(ctx context.Context, id int) (*Attachment, io.ReadCloser, error) {
 	var wrapper struct {
 		Attachment Attachment `json:"attachment"`
@@ -220,6 +225,9 @@ func (c *Client) GetAttachment(ctx context.Context, id int) (*Attachment, io.Rea
 	}
 	if wrapper.Attachment.ContentURL == "" {
 		return nil, nil, fmt.Errorf("attachment %d: no content_url returned", id)
+	}
+	if err := c.assertSameOrigin(wrapper.Attachment.ContentURL); err != nil {
+		return nil, nil, fmt.Errorf("attachment %d: %w", id, err)
 	}
 	req, err := http.NewRequestWithContext(ctx, "GET", wrapper.Attachment.ContentURL, nil)
 	if err != nil {
@@ -236,6 +244,26 @@ func (c *Client) GetAttachment(ctx context.Context, id int) (*Attachment, io.Rea
 		return nil, nil, &Error{Status: resp.StatusCode, Body: string(body), URL: wrapper.Attachment.ContentURL}
 	}
 	return &wrapper.Attachment, resp.Body, nil
+}
+
+// assertSameOrigin verifies target shares scheme and host (including port)
+// with c.baseURL. Used to gate the auth header on attachment downloads.
+func (c *Client) assertSameOrigin(target string) error {
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return fmt.Errorf("invalid base URL %q: %w", c.baseURL, err)
+	}
+	got, err := url.Parse(target)
+	if err != nil {
+		return fmt.Errorf("invalid url %q: %w", target, err)
+	}
+	if got.Scheme == "" || got.Host == "" {
+		return fmt.Errorf("invalid url %q: missing scheme or host", target)
+	}
+	if got.Scheme != base.Scheme || got.Host != base.Host {
+		return fmt.Errorf("refusing to send credentials to off-origin URL %s://%s (base is %s://%s)", got.Scheme, got.Host, base.Scheme, base.Host)
+	}
+	return nil
 }
 
 // CreateIssue posts a new issue. The payload is wrapped in

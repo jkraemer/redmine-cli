@@ -84,24 +84,25 @@ func TestListIssues_QueryParams(t *testing.T) {
 	}
 }
 
-func TestDownloadAttachment_FollowsContentURL(t *testing.T) {
-	// Second request: file content (different host/path)
+// Real Redmine serves attachment metadata and content from the same origin,
+// so the client should send the API key when content_url is on the same
+// scheme+host as baseURL.
+func TestDownloadAttachment_FollowsSameOriginContentURL(t *testing.T) {
 	var fileKey string
-	fileSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".json") {
+			w.Header().Set("Content-Type", "application/json")
+			body := `{"attachment":{"id":42,"filename":"hi.txt","content_url":"` + srv.URL + `/file"}}`
+			_, _ = w.Write([]byte(body))
+			return
+		}
 		fileKey = r.Header.Get("X-Redmine-API-Key")
 		_, _ = w.Write([]byte("file-bytes"))
 	}))
-	defer fileSrv.Close()
+	defer srv.Close()
 
-	// First request: attachment metadata
-	metaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		body := `{"attachment":{"id":42,"filename":"hi.txt","content_url":"` + fileSrv.URL + `/file"}}`
-		_, _ = w.Write([]byte(body))
-	}))
-	defer metaSrv.Close()
-
-	c := New(metaSrv.URL, "test-key", metaSrv.Client())
+	c := New(srv.URL, "test-key", srv.Client())
 	att, body, err := c.GetAttachment(context.Background(), 42)
 	if err != nil {
 		t.Fatal(err)
@@ -119,6 +120,47 @@ func TestDownloadAttachment_FollowsContentURL(t *testing.T) {
 	}
 	if fileKey != "test-key" {
 		t.Errorf("api key header missing on file fetch: %q", fileKey)
+	}
+}
+
+// H2: when the metadata response points content_url at a different origin,
+// we must refuse the request rather than ship the API key off-host.
+func TestDownloadAttachment_RefusesCrossOriginContentURL(t *testing.T) {
+	var fileKey string
+	fileSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fileKey = r.Header.Get("X-Redmine-API-Key")
+		_, _ = w.Write([]byte("should-not-be-fetched"))
+	}))
+	defer fileSrv.Close()
+
+	metaSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body := `{"attachment":{"id":42,"filename":"hi.txt","content_url":"` + fileSrv.URL + `/file"}}`
+		_, _ = w.Write([]byte(body))
+	}))
+	defer metaSrv.Close()
+
+	c := New(metaSrv.URL, "test-key", metaSrv.Client())
+	_, _, err := c.GetAttachment(context.Background(), 42)
+	if err == nil {
+		t.Fatalf("expected cross-origin content_url to be rejected, got nil")
+	}
+	if fileKey != "" {
+		t.Errorf("API key was leaked to off-origin host: %q", fileKey)
+	}
+}
+
+// H2: a malformed content_url should fail closed, not silently succeed.
+func TestDownloadAttachment_RefusesMalformedContentURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"attachment":{"id":42,"filename":"hi.txt","content_url":"::not a url::"}}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	if _, _, err := c.GetAttachment(context.Background(), 42); err == nil {
+		t.Fatalf("expected error on malformed content_url, got nil")
 	}
 }
 
