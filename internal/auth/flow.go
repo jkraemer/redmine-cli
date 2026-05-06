@@ -14,7 +14,8 @@ import (
 const redirectURI = "urn:ietf:wg:oauth:2.0:oob"
 
 // AuthorizeURL builds the authorization URL the user must open in their browser.
-func AuthorizeURL(baseURL, clientID, verifier string) (string, error) {
+// When pkce is false (confidential client), the code_challenge params are omitted.
+func AuthorizeURL(baseURL, clientID, verifier string, pkce bool) (string, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return "", err
@@ -24,8 +25,10 @@ func AuthorizeURL(baseURL, clientID, verifier string) (string, error) {
 	q.Set("response_type", "code")
 	q.Set("client_id", clientID)
 	q.Set("redirect_uri", redirectURI)
-	q.Set("code_challenge", Challenge(verifier))
-	q.Set("code_challenge_method", "S256")
+	if pkce {
+		q.Set("code_challenge", Challenge(verifier))
+		q.Set("code_challenge_method", "S256")
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -40,16 +43,23 @@ type tokenResponse struct {
 	ErrorDesc    string `json:"error_description"`
 }
 
-// Exchange trades the authorization code for a token.
-func Exchange(baseURL, clientID, code, verifier string) (*Token, error) {
+// Exchange trades the authorization code for a token. When clientSecret is
+// non-empty the request uses the confidential client flow (secret in body, no
+// code_verifier); otherwise the public/PKCE flow is used.
+func Exchange(baseURL, clientID, clientSecret, code, verifier string) (*Token, error) {
 	endpoint := strings.TrimRight(baseURL, "/") + "/oauth/token"
-	resp, err := http.PostForm(endpoint, url.Values{
-		"grant_type":    {"authorization_code"},
-		"client_id":     {clientID},
-		"code":          {code},
-		"redirect_uri":  {redirectURI},
-		"code_verifier": {verifier},
-	})
+	form := url.Values{
+		"grant_type":   {"authorization_code"},
+		"client_id":    {clientID},
+		"code":         {code},
+		"redirect_uri": {redirectURI},
+	}
+	if clientSecret != "" {
+		form.Set("client_secret", clientSecret)
+	} else {
+		form.Set("code_verifier", verifier)
+	}
+	resp, err := http.PostForm(endpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
@@ -76,14 +86,20 @@ func Exchange(baseURL, clientID, code, verifier string) (*Token, error) {
 	return t, nil
 }
 
-// Refresh uses the refresh_token to obtain a new access token.
-func Refresh(baseURL, clientID, refreshToken string) (*Token, error) {
+// Refresh uses the refresh_token to obtain a new access token. When
+// clientSecret is non-empty it is included in the POST body (confidential
+// client).
+func Refresh(baseURL, clientID, clientSecret, refreshToken string) (*Token, error) {
 	endpoint := strings.TrimRight(baseURL, "/") + "/oauth/token"
-	resp, err := http.PostForm(endpoint, url.Values{
+	form := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {clientID},
 		"refresh_token": {refreshToken},
-	})
+	}
+	if clientSecret != "" {
+		form.Set("client_secret", clientSecret)
+	}
+	resp, err := http.PostForm(endpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("token refresh: %w", err)
 	}

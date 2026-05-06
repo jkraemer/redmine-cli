@@ -37,7 +37,8 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("generating PKCE verifier: %w", err)
 			}
-			authURL, err := auth.AuthorizeURL(cfg.URL, cfg.OAuthClientID, verifier)
+			pkce := cfg.OAuthClientSecret == ""
+			authURL, err := auth.AuthorizeURL(cfg.URL, cfg.OAuthClientID, verifier, pkce)
 			if err != nil {
 				return fmt.Errorf("building auth URL: %w", err)
 			}
@@ -45,7 +46,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tok, err := auth.Exchange(cfg.URL, cfg.OAuthClientID, code, verifier)
+			tok, err := auth.Exchange(cfg.URL, cfg.OAuthClientID, cfg.OAuthClientSecret, code, verifier)
 			if err != nil {
 				return fmt.Errorf("token exchange: %w", err)
 			}

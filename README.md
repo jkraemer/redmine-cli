@@ -50,6 +50,18 @@ Copy the **Client ID** that is shown after saving.
 The `oauth_client_id` key can also be set via the environment:
 
     export REDMINE_OAUTH_CLIENT_ID=your-client-id-here
+    export REDMINE_OAUTH_CLIENT_SECRET=your-client-secret  # only for confidential clients (see below)
+
+#### Confidential client (older Redmine without PKCE support)
+
+If your Redmine instance requires a client secret, add it to your config:
+
+    oauth_client_id = "your-client-id"
+    oauth_client_secret = "your-client-secret"
+
+The CLI detects the secret automatically and switches to the confidential
+client flow (no PKCE). The `auth login` / `logout` / `status` commands work
+identically in both modes.
 
 #### 3. Authenticate
 

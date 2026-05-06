@@ -92,7 +92,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 				return fmt.Errorf("not authenticated — run: redmine-cli auth login")
 			}
 			if tok.Expired() && tok.RefreshToken != "" {
-				tok, err = auth.Refresh(cfg.URL, cfg.OAuthClientID, tok.RefreshToken)
+				tok, err = auth.Refresh(cfg.URL, cfg.OAuthClientID, cfg.OAuthClientSecret, tok.RefreshToken)
 				if err != nil {
 					return fmt.Errorf("token refresh failed: %w (run: redmine-cli auth login)", err)
 				}

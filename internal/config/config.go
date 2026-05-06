@@ -14,10 +14,11 @@ import (
 
 // Config holds resolved CLI configuration.
 type Config struct {
-	URL           string
-	APIKey        string
-	OAuthClientID string
-	DefaultFormat string
+	URL               string
+	APIKey            string
+	OAuthClientID     string
+	OAuthClientSecret string
+	DefaultFormat     string
 	// Warnings collects non-fatal issues found while loading config —
 	// e.g. an API key file that is readable by group/other. The CLI
 	// surfaces them on stderr but they don't block startup.
@@ -25,10 +26,11 @@ type Config struct {
 }
 
 type fileConfig struct {
-	URL           string `toml:"url"`
-	APIKey        string `toml:"api_key"`
-	OAuthClientID string `toml:"oauth_client_id"`
-	DefaultFormat string `toml:"default_format"`
+	URL               string `toml:"url"`
+	APIKey            string `toml:"api_key"`
+	OAuthClientID     string `toml:"oauth_client_id"`
+	OAuthClientSecret string `toml:"oauth_client_secret"`
+	DefaultFormat     string `toml:"default_format"`
 }
 
 // ErrMissingURL is returned when no URL can be resolved.
@@ -56,6 +58,7 @@ func Load() (*Config, error) {
 	cfg.URL = firstNonEmpty(os.Getenv("REDMINE_URL"), fc.URL)
 	cfg.APIKey = firstNonEmpty(os.Getenv("REDMINE_API_KEY"), fc.APIKey)
 	cfg.OAuthClientID = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_ID"), fc.OAuthClientID)
+	cfg.OAuthClientSecret = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_SECRET"), fc.OAuthClientSecret)
 	cfg.DefaultFormat = firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json")
 
 	if cfg.URL == "" {
