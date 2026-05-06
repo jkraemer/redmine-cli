@@ -18,6 +18,10 @@ type Config struct {
 	APIKey        string
 	OAuthClientID string
 	DefaultFormat string
+	// Warnings collects non-fatal issues found while loading config —
+	// e.g. an API key file that is readable by group/other. The CLI
+	// surfaces them on stderr but they don't block startup.
+	Warnings []string
 }
 
 type fileConfig struct {
@@ -37,20 +41,22 @@ var ErrMissingAPIKey = errors.New("redmine API key not configured (set REDMINE_A
 // file at $XDG_CONFIG_HOME/redmine-cli/config.toml.
 func Load() (*Config, error) {
 	var fc fileConfig
+	cfg := &Config{}
 	if path := configPath(); path != "" {
-		if _, err := os.Stat(path); err == nil {
+		if info, err := os.Stat(path); err == nil {
 			if _, err := toml.DecodeFile(path, &fc); err != nil {
 				return nil, fmt.Errorf("parse %s: %w", path, err)
+			}
+			if w := insecurePermWarning(path, info); w != "" {
+				cfg.Warnings = append(cfg.Warnings, w)
 			}
 		}
 	}
 
-	cfg := &Config{
-		URL:           firstNonEmpty(os.Getenv("REDMINE_URL"), fc.URL),
-		APIKey:        firstNonEmpty(os.Getenv("REDMINE_API_KEY"), fc.APIKey),
-		OAuthClientID: firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_ID"), fc.OAuthClientID),
-		DefaultFormat: firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json"),
-	}
+	cfg.URL = firstNonEmpty(os.Getenv("REDMINE_URL"), fc.URL)
+	cfg.APIKey = firstNonEmpty(os.Getenv("REDMINE_API_KEY"), fc.APIKey)
+	cfg.OAuthClientID = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_ID"), fc.OAuthClientID)
+	cfg.DefaultFormat = firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json")
 
 	if cfg.URL == "" {
 		return nil, ErrMissingURL
@@ -59,6 +65,18 @@ func Load() (*Config, error) {
 		return nil, ErrMissingAPIKey
 	}
 	return cfg, nil
+}
+
+// insecurePermWarning returns a non-empty warning when the config file's
+// permissions allow group or other to read it. The file holds a long-lived
+// API key, so loose permissions are worth surfacing even if the file
+// otherwise loads cleanly. Returns "" on Windows or for tight perms.
+func insecurePermWarning(path string, info os.FileInfo) string {
+	mode := info.Mode().Perm()
+	if mode&0o077 == 0 {
+		return ""
+	}
+	return fmt.Sprintf("config file %s is readable by group/other (mode %#o); consider chmod 600", path, mode)
 }
 
 func configPath() string {

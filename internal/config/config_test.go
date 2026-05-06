@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -74,6 +75,55 @@ func TestLoad_EnvOverridesTOML(t *testing.T) {
 	}
 	if cfg.URL != "https://env.example" {
 		t.Errorf("URL=%q", cfg.URL)
+	}
+}
+
+func TestLoad_WarnsWhenConfigFileIsGroupOrWorldReadable(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfgPath := filepath.Join(cfgDir, "config.toml")
+	if err := os.WriteFile(cfgPath, []byte(`url="https://x"`+"\n"+`api_key="k"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, w := range cfg.Warnings {
+		if strings.Contains(w, cfgPath) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected warning mentioning %s, got %v", cfgPath, cfg.Warnings)
+	}
+}
+
+func TestLoad_NoWarningWhenConfigFileIsTight(t *testing.T) {
+	dir := t.TempDir()
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	_ = os.MkdirAll(cfgDir, 0o755)
+	_ = os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`api_key="k"`), 0o600)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", cfg.Warnings)
 	}
 }
 

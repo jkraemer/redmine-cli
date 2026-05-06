@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -23,12 +24,19 @@ type runCtx struct {
 	client      *api.Client
 	format      string // "json" or "markdown"
 	agentHelp   bool
+	// parentCtx is the cancellable context for the whole CLI run. The
+	// production wiring derives it from os.Interrupt/SIGTERM in Execute,
+	// so Ctrl-C cancels any in-flight HTTP request. Tests may set their
+	// own context for cancellation tests.
+	parentCtx context.Context
 }
 
 // Build constructs the root command with all subcommands wired in.
+// ctx is the parent context for the whole run; it is propagated to every
+// HTTP call so a Ctrl-C / SIGTERM in Execute() cancels in-flight requests.
 // out and errOut are used in place of os.Stdout/os.Stderr (testable).
-func Build(out, errOut io.Writer) *cobra.Command {
-	rc := &runCtx{out: out, errOut: errOut}
+func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
+	rc := &runCtx{out: out, errOut: errOut, parentCtx: ctx}
 
 	root := &cobra.Command{
 		Use:           "redmine-cli",
@@ -69,6 +77,9 @@ func Build(out, errOut io.Writer) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		for _, w := range cfg.Warnings {
+			fmt.Fprintln(rc.errOut, "warning:", w)
+		}
 		if rc.format == "" {
 			rc.format = cfg.DefaultFormat
 		}
@@ -89,9 +100,9 @@ func Build(out, errOut io.Writer) *cobra.Command {
 					return err
 				}
 			}
-			rc.client = api.NewWithToken(cfg.URL, tok.AccessToken, http.DefaultClient)
+			rc.client = api.NewWithToken(cfg.URL, tok.AccessToken, nil)
 		} else {
-			rc.client = api.New(cfg.URL, cfg.APIKey, http.DefaultClient)
+			rc.client = api.New(cfg.URL, cfg.APIKey, nil)
 		}
 		return nil
 	}
@@ -114,8 +125,10 @@ func Build(out, errOut io.Writer) *cobra.Command {
 
 // Execute runs the root command and exits with the appropriate code.
 func Execute() {
-	root := Build(os.Stdout, os.Stderr)
-	err := root.Execute()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	root := Build(ctx, os.Stdout, os.Stderr)
+	err := root.ExecuteContext(ctx)
 	if err == nil {
 		os.Exit(0)
 	}
@@ -152,7 +165,12 @@ func exitCodeFor(err error) int {
 	return 1
 }
 
-// ctx returns a context for subcommands.
+// ctx returns the cancellable run context shared by all subcommands.
+// It falls back to context.Background only when nothing was wired (defensive
+// guard for older test code paths).
 func (rc *runCtx) ctx() context.Context {
-	return context.Background()
+	if rc.parentCtx == nil {
+		return context.Background()
+	}
+	return rc.parentCtx
 }
