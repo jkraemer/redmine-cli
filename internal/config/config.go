@@ -16,12 +16,14 @@ import (
 type Config struct {
 	URL           string
 	APIKey        string
+	OAuthClientID string
 	DefaultFormat string
 }
 
 type fileConfig struct {
 	URL           string `toml:"url"`
 	APIKey        string `toml:"api_key"`
+	OAuthClientID string `toml:"oauth_client_id"`
 	DefaultFormat string `toml:"default_format"`
 }
 
@@ -46,6 +48,7 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		URL:           firstNonEmpty(os.Getenv("REDMINE_URL"), fc.URL),
 		APIKey:        firstNonEmpty(os.Getenv("REDMINE_API_KEY"), fc.APIKey),
+		OAuthClientID: firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_ID"), fc.OAuthClientID),
 		DefaultFormat: firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json"),
 	}
 
