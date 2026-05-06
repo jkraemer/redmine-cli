@@ -12,6 +12,8 @@ triggers:
   - redmine project
   - redmine attachment
   - redmine search
+  - redmine wiki
+  - wiki page
   - my redmine issues
   - assigned to me in redmine
   - download redmine attachment
@@ -58,7 +60,27 @@ redmine-cli time log --agent --help            # time logging flags
 redmine-cli search --agent --help              # search filters
 ```
 
-Returns JSON `{command, path, short, long, usage, flags[], inherited_flags[], subcommands[], notes[]}`.
+Also add to the CLI introspection examples:
+```bash
+redmine-cli wiki --agent --help              # wiki subcommand tree
+redmine-cli wiki list --agent --help         # list flags
+redmine-cli wiki get --agent --help          # get flags
+```
+
+## Quick Reference — Wiki
+
+Wiki pages are always scoped to a project (`--project` is required).
+
+| Task | Command |
+|------|---------|
+| List wiki pages in a project | `redmine-cli wiki list --project myproj` |
+| Get a page by title | `redmine-cli wiki get Architecture --project myproj` |
+| Get a page as JSON | `redmine-cli wiki get Architecture --project myproj --format json` |
+
+Notes:
+- Page titles are case-sensitive and match the Redmine URL slug (e.g. `Database-Model`).
+- `wiki get` includes attachments in the response automatically.
+- A 404 means either the page doesn't exist or the Wiki module is not enabled for that project.
 
 ## Quick Reference — Read
 
