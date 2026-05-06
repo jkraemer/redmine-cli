@@ -276,3 +276,28 @@ type SearchParams struct {
 	Scope      string
 	ProjectID  string
 }
+
+// WikiPageSummary is a single entry in a project's wiki index.
+type WikiPageSummary struct {
+	Title     string `json:"title"`
+	Version   int    `json:"version"`
+	CreatedOn string `json:"created_on"`
+	UpdatedOn string `json:"updated_on"`
+}
+
+// WikiPage is the full content of a wiki page.
+type WikiPage struct {
+	Title       string       `json:"title"`
+	Text        string       `json:"text"`
+	Version     int          `json:"version"`
+	Author      IDName       `json:"author"`
+	Comments    string       `json:"comments,omitempty"`
+	CreatedOn   string       `json:"created_on"`
+	UpdatedOn   string       `json:"updated_on"`
+	Attachments []Attachment `json:"attachments,omitempty"`
+}
+
+// ListWikiPagesResult is the response from /projects/{id}/wiki/index.json.
+type ListWikiPagesResult struct {
+	WikiPages []WikiPageSummary `json:"wiki_pages"`
+}

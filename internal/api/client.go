@@ -362,3 +362,27 @@ func (c *Client) Search(ctx context.Context, p SearchParams) (*SearchResults, er
 	}
 	return &res, nil
 }
+
+// ListWikiPages fetches the wiki index for a project via /projects/{id}/wiki/index.json.
+func (c *Client) ListWikiPages(ctx context.Context, projectID string) (*ListWikiPagesResult, error) {
+	var res ListWikiPagesResult
+	path := fmt.Sprintf("/projects/%s/wiki/index.json", url.PathEscape(projectID))
+	if err := c.doJSON(ctx, path, nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
+// GetWikiPage fetches a single wiki page by title via /projects/{id}/wiki/{title}.json.
+func (c *Client) GetWikiPage(ctx context.Context, projectID, title string) (*WikiPage, error) {
+	var wrapper struct {
+		WikiPage WikiPage `json:"wiki_page"`
+	}
+	path := fmt.Sprintf("/projects/%s/wiki/%s.json", url.PathEscape(projectID), url.PathEscape(title))
+	q := url.Values{}
+	q.Set("include", "attachments")
+	if err := c.doJSON(ctx, path, q, &wrapper); err != nil {
+		return nil, err
+	}
+	return &wrapper.WikiPage, nil
+}
