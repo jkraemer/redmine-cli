@@ -163,6 +163,38 @@ func TestExchangeConfidential(t *testing.T) {
 	}
 }
 
+func TestExchange_ParsesScope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"AT","refresh_token":"RT","token_type":"Bearer","expires_in":3600,"scope":"view_project edit_issues"}`)
+	}))
+	defer srv.Close()
+
+	tok, err := Exchange(srv.URL, "cid", "shh", "code", "verifier")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Scope != "view_project edit_issues" {
+		t.Errorf("Scope=%q want %q", tok.Scope, "view_project edit_issues")
+	}
+}
+
+func TestRefresh_ParsesScopeWhenPresent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"AT2","token_type":"Bearer","expires_in":3600,"scope":"view_project"}`)
+	}))
+	defer srv.Close()
+
+	tok, err := Refresh(srv.URL, "cid", "", "RT")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Scope != "view_project" {
+		t.Errorf("Scope=%q want view_project", tok.Scope)
+	}
+}
+
 func TestTokenExpired(t *testing.T) {
 	past := &Token{ExpiresAt: time.Now().Add(-time.Minute)}
 	if !past.Expired() {

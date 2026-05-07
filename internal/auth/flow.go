@@ -45,6 +45,7 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope"`
 	Error        string `json:"error"`
 	ErrorDesc    string `json:"error_description"`
 }
@@ -85,6 +86,7 @@ func Exchange(baseURL, clientID, clientSecret, code, verifier string) (*Token, e
 		AccessToken:  tr.AccessToken,
 		RefreshToken: tr.RefreshToken,
 		TokenType:    tr.TokenType,
+		Scope:        tr.Scope,
 	}
 	if tr.ExpiresIn > 0 {
 		t.ExpiresAt = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
@@ -122,6 +124,7 @@ func Refresh(baseURL, clientID, clientSecret, refreshToken string) (*Token, erro
 		AccessToken:  tr.AccessToken,
 		RefreshToken: refreshToken,
 		TokenType:    tr.TokenType,
+		Scope:        tr.Scope,
 	}
 	if tr.RefreshToken != "" {
 		t.RefreshToken = tr.RefreshToken
