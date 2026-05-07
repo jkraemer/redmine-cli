@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 )
@@ -18,6 +19,7 @@ type Config struct {
 	APIKey            string
 	OAuthClientID     string
 	OAuthClientSecret string
+	OAuthScopes       []string
 	DefaultFormat     string
 	// Warnings collects non-fatal issues found while loading config —
 	// e.g. an API key file that is readable by group/other. The CLI
@@ -26,11 +28,12 @@ type Config struct {
 }
 
 type fileConfig struct {
-	URL               string `toml:"url"`
-	APIKey            string `toml:"api_key"`
-	OAuthClientID     string `toml:"oauth_client_id"`
-	OAuthClientSecret string `toml:"oauth_client_secret"`
-	DefaultFormat     string `toml:"default_format"`
+	URL               string   `toml:"url"`
+	APIKey            string   `toml:"api_key"`
+	OAuthClientID     string   `toml:"oauth_client_id"`
+	OAuthClientSecret string   `toml:"oauth_client_secret"`
+	OAuthScopes       []string `toml:"oauth_scopes"`
+	DefaultFormat     string   `toml:"default_format"`
 }
 
 // ErrMissingURL is returned when no URL can be resolved.
@@ -59,6 +62,7 @@ func Load() (*Config, error) {
 	cfg.APIKey = firstNonEmpty(os.Getenv("REDMINE_API_KEY"), fc.APIKey)
 	cfg.OAuthClientID = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_ID"), fc.OAuthClientID)
 	cfg.OAuthClientSecret = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_SECRET"), fc.OAuthClientSecret)
+	cfg.OAuthScopes = resolveScopes(os.Getenv("REDMINE_OAUTH_SCOPES"), fc.OAuthScopes)
 	cfg.DefaultFormat = firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json")
 
 	if cfg.URL == "" {
@@ -107,4 +111,20 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+// resolveScopes returns env-split scopes if non-empty, else the TOML list
+// (with empty/whitespace-only entries filtered out). Env values are
+// space-separated per RFC 6749 §3.3.
+func resolveScopes(env string, fileScopes []string) []string {
+	if s := strings.TrimSpace(env); s != "" {
+		return strings.Fields(s)
+	}
+	out := make([]string, 0, len(fileScopes))
+	for _, s := range fileScopes {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
