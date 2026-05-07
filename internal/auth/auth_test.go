@@ -195,6 +195,38 @@ func TestRefresh_ParsesScopeWhenPresent(t *testing.T) {
 	}
 }
 
+func TestRefreshWithScope_KeepsPriorScopeWhenServerOmits(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"AT2","token_type":"Bearer","expires_in":3600}`)
+	}))
+	defer srv.Close()
+
+	tok, err := RefreshWithScope(srv.URL, "cid", "", "RT", "view_project edit_issues")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Scope != "view_project edit_issues" {
+		t.Errorf("Scope=%q want preserved prior scope", tok.Scope)
+	}
+}
+
+func TestRefreshWithScope_ServerEchoWins(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"access_token":"AT2","token_type":"Bearer","expires_in":3600,"scope":"view_project"}`)
+	}))
+	defer srv.Close()
+
+	tok, err := RefreshWithScope(srv.URL, "cid", "", "RT", "view_project edit_issues")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tok.Scope != "view_project" {
+		t.Errorf("Scope=%q want server-reported scope to win", tok.Scope)
+	}
+}
+
 func TestTokenExpired(t *testing.T) {
 	past := &Token{ExpiresAt: time.Now().Add(-time.Minute)}
 	if !past.Expired() {

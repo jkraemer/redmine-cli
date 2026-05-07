@@ -135,6 +135,21 @@ func Refresh(baseURL, clientID, clientSecret, refreshToken string) (*Token, erro
 	return t, nil
 }
 
+// RefreshWithScope is like Refresh but preserves priorScope on the returned
+// Token when the server response omits the "scope" field. Most refresh
+// responses don't echo scope, so callers should pass the previously stored
+// scope here to keep `auth status` informative across refreshes.
+func RefreshWithScope(baseURL, clientID, clientSecret, refreshToken, priorScope string) (*Token, error) {
+	t, err := Refresh(baseURL, clientID, clientSecret, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+	if t.Scope == "" {
+		t.Scope = priorScope
+	}
+	return t, nil
+}
+
 // PromptCode prints the authorization URL and reads the code from r.
 func PromptCode(out io.Writer, in io.Reader, authURL string) (string, error) {
 	fmt.Fprintf(out, "\nOpen this URL in your browser:\n\n  %s\n\n", authURL)
