@@ -38,7 +38,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("generating PKCE verifier: %w", err)
 			}
 			pkce := cfg.OAuthClientSecret == ""
-			authURL, err := auth.AuthorizeURL(cfg.URL, cfg.OAuthClientID, verifier, pkce)
+			authURL, err := auth.AuthorizeURL(cfg.URL, cfg.OAuthClientID, verifier, pkce, cfg.OAuthScopes)
 			if err != nil {
 				return fmt.Errorf("building auth URL: %w", err)
 			}

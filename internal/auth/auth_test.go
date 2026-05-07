@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -73,7 +74,7 @@ func TestAuthorizeURL(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pkceURL, err := AuthorizeURL(base, clientID, verifier, true)
+	pkceURL, err := AuthorizeURL(base, clientID, verifier, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +85,7 @@ func TestAuthorizeURL(t *testing.T) {
 		t.Errorf("PKCE URL missing code_challenge_method: %s", pkceURL)
 	}
 
-	confURL, err := AuthorizeURL(base, clientID, verifier, false)
+	confURL, err := AuthorizeURL(base, clientID, verifier, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +94,35 @@ func TestAuthorizeURL(t *testing.T) {
 	}
 	if strings.Contains(confURL, "code_challenge_method") {
 		t.Errorf("confidential URL must not contain code_challenge_method: %s", confURL)
+	}
+}
+
+func TestAuthorizeURL_WithScopes(t *testing.T) {
+	const base = "https://redmine.example"
+	verifier, _ := GenerateVerifier()
+	scopes := []string{"view_project", "edit_issues"}
+
+	got, err := AuthorizeURL(base, "cid", verifier, true, scopes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := u.Query().Get("scope"); s != "view_project edit_issues" {
+		t.Errorf("scope=%q want %q", s, "view_project edit_issues")
+	}
+}
+
+func TestAuthorizeURL_NoScopesOmitsParam(t *testing.T) {
+	verifier, _ := GenerateVerifier()
+	got, err := AuthorizeURL("https://x", "cid", verifier, true, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got, "scope=") {
+		t.Errorf("expected no scope param when scopes is empty: %s", got)
 	}
 }
 

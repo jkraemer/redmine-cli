@@ -15,7 +15,10 @@ const redirectURI = "urn:ietf:wg:oauth:2.0:oob"
 
 // AuthorizeURL builds the authorization URL the user must open in their browser.
 // When pkce is false (confidential client), the code_challenge params are omitted.
-func AuthorizeURL(baseURL, clientID, verifier string, pkce bool) (string, error) {
+// When scopes is non-empty, they are joined with spaces and sent as the "scope"
+// query parameter (RFC 6749 §3.3); otherwise the parameter is omitted and the
+// server falls back to its default scope set.
+func AuthorizeURL(baseURL, clientID, verifier string, pkce bool, scopes []string) (string, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return "", err
@@ -28,6 +31,9 @@ func AuthorizeURL(baseURL, clientID, verifier string, pkce bool) (string, error)
 	if pkce {
 		q.Set("code_challenge", Challenge(verifier))
 		q.Set("code_challenge_method", "S256")
+	}
+	if len(scopes) > 0 {
+		q.Set("scope", strings.Join(scopes, " "))
 	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
