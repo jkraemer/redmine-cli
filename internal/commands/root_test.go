@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jkraemer/redmine-cli/internal/api"
+	"github.com/jkraemer/redmine-cli/internal/auth"
 )
 
 // buildRootForTest returns a minimal root command with the runCtx pre-populated.
@@ -97,6 +98,61 @@ func TestRunCtx_CancelsInFlightHTTP(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatalf("command did not return after context cancel")
+	}
+}
+
+func TestAuthStatus_ShowsScope(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("REDMINE_URL", "https://x")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "cid")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	tok := &auth.Token{
+		AccessToken: "AT",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(time.Hour),
+		Scope:       "view_project edit_issues",
+	}
+	if err := auth.SaveToken(tok); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}}
+	cmd := newAuthStatusCmd(rc)
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "view_project edit_issues") {
+		t.Errorf("status output missing scope: %s", out.String())
+	}
+}
+
+func TestAuthStatus_ShowsNoneWhenScopeMissing(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("REDMINE_URL", "https://x")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "cid")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	tok := &auth.Token{
+		AccessToken: "AT",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(time.Hour),
+	}
+	if err := auth.SaveToken(tok); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}}
+	cmd := newAuthStatusCmd(rc)
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "(none reported)") {
+		t.Errorf("status output should mention '(none reported)': %s", out.String())
 	}
 }
 

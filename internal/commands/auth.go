@@ -98,7 +98,11 @@ func newAuthStatusCmd(rc *runCtx) *cobra.Command {
 						expiry += " (EXPIRED)"
 					}
 				}
-				fmt.Fprintf(rc.out, "Auth method: oauth\nStatus:      logged in\nExpires:     %s\n", expiry)
+				scope := tok.Scope
+				if scope == "" {
+					scope = "(none reported)"
+				}
+				fmt.Fprintf(rc.out, "Auth method: oauth\nStatus:      logged in\nExpires:     %s\nScope:       %s\n", expiry, scope)
 			} else {
 				fmt.Fprintln(rc.out, "Auth method: api_key")
 			}
