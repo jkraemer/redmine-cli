@@ -27,8 +27,8 @@ argument-hint: "[action] [args...]"
 
 # /redmine - Redmine CLI Workflow
 
-Read, write, search, lookups, time tracking. Phase 3 (OAuth + Planio extras
-+ packaging) is tracked in #1461 and #1462.
+Read, write, search, lookups, time tracking, OAuth. Planio extras and
+packaging tracked in #1462.
 
 ## Agent Invariants
 
@@ -192,6 +192,23 @@ Or `~/.config/redmine-cli/config.toml`:
     api_key = "..."
     default_format = "markdown"
 
+### OAuth (alternative to API key)
+
+When using OAuth instead of an API key, set `oauth_client_id` (and
+`oauth_client_secret` for confidential clients) plus the scopes the
+client needs — without them Redmine grants only its minimal default set:
+
+    oauth_client_id = "..."
+    oauth_scopes = ["view_project", "view_issues", "edit_issues",
+                    "view_wiki_pages", "edit_wiki_pages", "log_time"]
+
+Or via env: `REDMINE_OAUTH_CLIENT_ID`, `REDMINE_OAUTH_CLIENT_SECRET`,
+`REDMINE_OAUTH_SCOPES` (space-separated).
+
+Then run `redmine-cli auth login`. `auth status` shows the granted scope
+and is preserved across token refreshes. See README for the full list of
+known Planio scopes and the admin workaround for older Redmines.
+
 ## Exit Codes
 
 | Code | Meaning |
@@ -207,7 +224,6 @@ Or `~/.config/redmine-cli/config.toml`:
 
 ## Out of Scope (in flight)
 
-- OAuth 2.0 auth flow — #1461
 - Planio Help Desk endpoints, packaging, distribution — #1462
 
 Watchers and file uploads on create/update are not yet implemented.
