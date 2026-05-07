@@ -75,9 +75,50 @@ the prompt. The token is stored in `~/.config/redmine-cli/token.json`
     redmine-cli auth status   # check current auth method and expiry
     redmine-cli auth logout   # revoke and remove stored token
 
-> **Note:** OAuth support is tracked in issue #1461 and is not yet
-> implemented. The `oauth_client_id` config key is accepted by the parser
-> today so you can pre-populate your config file.
+#### Granting full scopes (admin workaround)
+
+`redmine-cli` does not currently send a `scope` parameter on the
+authorization request, so Redmine grants only its minimal default scope set.
+A successfully authenticated client may then be limited to e.g. listing
+projects and little else, even if you've enabled additional permissions on
+the OAuth application.
+
+If you are a Redmine administrator, you can work around this:
+
+1. In Redmine, create the OAuth application and note the **Client ID** and
+   (for confidential clients) **Client Secret**. Put them in the
+   `redmine-cli` config file as described above.
+2. Run `redmine-cli auth login`, but **do not** open the URL it prints.
+3. Instead, in the Redmine admin UI, scroll to the table of registered OAuth
+   applications and click **Authorize** next to your application. This
+   requests the maximum set of scopes the application is permitted to use,
+   grants access, and shows an authorization code.
+4. Paste that code at the `redmine-cli` prompt.
+
+The resulting token will carry the full scope set, and refresh tokens will
+preserve it.
+
+#### Reference: Planio OAuth scopes
+
+For convenience, the scopes a recent Planio installation supports — useful
+as a starting point when you configure `oauth_scopes` (see #1469):
+
+- `view_project`
+- `search_project`
+- `view_issues`
+- `add_issues`
+- `edit_issues`
+- `edit_own_issues`
+- `add_issue_notes`
+- `edit_issue_notes`
+- `edit_own_issue_notes`
+- `view_wiki_pages`
+- `edit_wiki_pages`
+- `view_time_entries`
+- `log_time`
+
+This list is for local reference only — different Redmine/Planio versions
+may expose different scopes.
 
 ## Use
 
