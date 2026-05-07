@@ -38,7 +38,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("generating PKCE verifier: %w", err)
 			}
 			pkce := cfg.OAuthClientSecret == ""
-			authURL, err := auth.AuthorizeURL(cfg.URL, cfg.OAuthClientID, verifier, pkce)
+			authURL, err := auth.AuthorizeURL(cfg.URL, cfg.OAuthClientID, verifier, pkce, cfg.OAuthScopes)
 			if err != nil {
 				return fmt.Errorf("building auth URL: %w", err)
 			}
@@ -98,7 +98,11 @@ func newAuthStatusCmd(rc *runCtx) *cobra.Command {
 						expiry += " (EXPIRED)"
 					}
 				}
-				fmt.Fprintf(rc.out, "Auth method: oauth\nStatus:      logged in\nExpires:     %s\n", expiry)
+				scope := tok.Scope
+				if scope == "" {
+					scope = "(none reported)"
+				}
+				fmt.Fprintf(rc.out, "Auth method: oauth\nStatus:      logged in\nExpires:     %s\nScope:       %s\n", expiry, scope)
 			} else {
 				fmt.Fprintln(rc.out, "Auth method: api_key")
 			}

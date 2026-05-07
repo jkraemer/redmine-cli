@@ -72,18 +72,33 @@ application, and copy the authorization code shown by Redmine. Paste it at
 the prompt. The token is stored in `~/.config/redmine-cli/token.json`
 (mode 0600) and refreshed automatically.
 
-    redmine-cli auth status   # check current auth method and expiry
+    redmine-cli auth status   # check current auth method, expiry, granted scope
     redmine-cli auth logout   # revoke and remove stored token
+
+#### Configuring requested scopes
+
+When `oauth_scopes` is unset, Redmine grants only its minimal default scope
+set, which usually limits the client to read-only operations like listing
+projects. To request specific scopes, set `oauth_scopes` in your config:
+
+    oauth_scopes = ["view_project", "view_issues", "edit_issues",
+                    "view_wiki_pages", "edit_wiki_pages", "log_time"]
+
+Or via the environment (space-separated, RFC 6749 §3.3):
+
+    export REDMINE_OAUTH_SCOPES="view_project view_issues edit_issues"
+
+`redmine-cli` will join them and send `scope=<space-separated>` on the
+authorization request. The granted scope shows up in `auth status` and is
+preserved across token refreshes. See "Reference: Planio OAuth scopes"
+below for known values.
 
 #### Granting full scopes (admin workaround)
 
-`redmine-cli` does not currently send a `scope` parameter on the
-authorization request, so Redmine grants only its minimal default scope set.
-A successfully authenticated client may then be limited to e.g. listing
-projects and little else, even if you've enabled additional permissions on
-the OAuth application.
-
-If you are a Redmine administrator, you can work around this:
+If you don't want to enumerate scopes manually — or your Redmine version
+doesn't honour the `scope` parameter — and you are a Redmine
+administrator, you can have Redmine grant the application's full
+permitted scope set instead:
 
 1. In Redmine, create the OAuth application and note the **Client ID** and
    (for confidential clients) **Client Secret**. Put them in the

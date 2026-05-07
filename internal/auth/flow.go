@@ -15,7 +15,10 @@ const redirectURI = "urn:ietf:wg:oauth:2.0:oob"
 
 // AuthorizeURL builds the authorization URL the user must open in their browser.
 // When pkce is false (confidential client), the code_challenge params are omitted.
-func AuthorizeURL(baseURL, clientID, verifier string, pkce bool) (string, error) {
+// When scopes is non-empty, they are joined with spaces and sent as the "scope"
+// query parameter (RFC 6749 §3.3); otherwise the parameter is omitted and the
+// server falls back to its default scope set.
+func AuthorizeURL(baseURL, clientID, verifier string, pkce bool, scopes []string) (string, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil {
 		return "", err
@@ -29,6 +32,9 @@ func AuthorizeURL(baseURL, clientID, verifier string, pkce bool) (string, error)
 		q.Set("code_challenge", Challenge(verifier))
 		q.Set("code_challenge_method", "S256")
 	}
+	if len(scopes) > 0 {
+		q.Set("scope", strings.Join(scopes, " "))
+	}
 	u.RawQuery = q.Encode()
 	return u.String(), nil
 }
@@ -39,6 +45,7 @@ type tokenResponse struct {
 	RefreshToken string `json:"refresh_token"`
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
+	Scope        string `json:"scope"`
 	Error        string `json:"error"`
 	ErrorDesc    string `json:"error_description"`
 }
@@ -79,6 +86,7 @@ func Exchange(baseURL, clientID, clientSecret, code, verifier string) (*Token, e
 		AccessToken:  tr.AccessToken,
 		RefreshToken: tr.RefreshToken,
 		TokenType:    tr.TokenType,
+		Scope:        tr.Scope,
 	}
 	if tr.ExpiresIn > 0 {
 		t.ExpiresAt = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
@@ -116,12 +124,28 @@ func Refresh(baseURL, clientID, clientSecret, refreshToken string) (*Token, erro
 		AccessToken:  tr.AccessToken,
 		RefreshToken: refreshToken,
 		TokenType:    tr.TokenType,
+		Scope:        tr.Scope,
 	}
 	if tr.RefreshToken != "" {
 		t.RefreshToken = tr.RefreshToken
 	}
 	if tr.ExpiresIn > 0 {
 		t.ExpiresAt = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)
+	}
+	return t, nil
+}
+
+// RefreshWithScope is like Refresh but preserves priorScope on the returned
+// Token when the server response omits the "scope" field. Most refresh
+// responses don't echo scope, so callers should pass the previously stored
+// scope here to keep `auth status` informative across refreshes.
+func RefreshWithScope(baseURL, clientID, clientSecret, refreshToken, priorScope string) (*Token, error) {
+	t, err := Refresh(baseURL, clientID, clientSecret, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+	if t.Scope == "" {
+		t.Scope = priorScope
 	}
 	return t, nil
 }
