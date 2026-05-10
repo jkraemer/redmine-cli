@@ -60,6 +60,21 @@ type Journal struct {
 	Details   []any  `json:"details,omitempty"`
 }
 
+// Upload is the {id, token} result of POST /uploads.json.
+type Upload struct {
+	ID    int    `json:"id"`
+	Token string `json:"token"`
+}
+
+// UploadRef is one entry in the `uploads` array sent on
+// issue/wiki create/update payloads.
+type UploadRef struct {
+	Token       string `json:"token"`
+	Filename    string `json:"filename,omitempty"`
+	Description string `json:"description,omitempty"`
+	ContentType string `json:"content_type,omitempty"`
+}
+
 // Attachment metadata.
 type Attachment struct {
 	ID          int    `json:"id"`
@@ -124,6 +139,7 @@ type IssueCreate struct {
 	DueDate       string             `json:"due_date,omitempty"`
 	DoneRatio     int                `json:"done_ratio,omitempty"`
 	CustomFields  []CustomFieldValue `json:"custom_fields,omitempty"`
+	Uploads       []UploadRef        `json:"uploads,omitempty"`
 }
 
 // IssueUpdate is the payload for PUT /issues/{id}.json. All fields are
@@ -141,6 +157,7 @@ type IssueUpdate struct {
 	DueDate      *string            `json:"due_date,omitempty"`
 	Notes        *string            `json:"notes,omitempty"`
 	CustomFields []CustomFieldValue `json:"custom_fields,omitempty"`
+	Uploads      []UploadRef        `json:"uploads,omitempty"`
 }
 
 // TimeEntry is a logged time entry returned by the API.
@@ -306,6 +323,7 @@ type ListWikiPagesResult struct {
 // Redmine uses PUT for both create and update (idempotent).
 // Wrap in {"wiki_page": ...} when sending.
 type WikiPageWrite struct {
-	Text     string `json:"text"`
-	Comments string `json:"comments,omitempty"`
+	Text     string      `json:"text"`
+	Comments string      `json:"comments,omitempty"`
+	Uploads  []UploadRef `json:"uploads,omitempty"`
 }

@@ -321,6 +321,52 @@ func (c *Client) GetAttachment(ctx context.Context, id int) (*Attachment, io.Rea
 	return &wrapper.Attachment, resp.Body, nil
 }
 
+// UploadFile streams body to POST /uploads.json and returns the
+// {id, token} pair Redmine assigns to the orphan upload. filename
+// and contentType are sent as query params; both may be empty
+// (Redmine generates a random filename and guesses the type).
+//
+// This bypasses doWriteJSON because that helper marshals a JSON payload;
+// here the wire format is application/octet-stream and we want to stream
+// the reader straight through without buffering, so large attachments
+// don't pin the file's full size in memory.
+func (c *Client) UploadFile(ctx context.Context, body io.Reader, filename, contentType string) (*Upload, error) {
+	full := c.baseURL + "/uploads.json"
+	q := url.Values{}
+	if filename != "" {
+		q.Set("filename", filename)
+	}
+	if contentType != "" {
+		q.Set("content_type", contentType)
+	}
+	if len(q) > 0 {
+		full += "?" + q.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", full, body)
+	if err != nil {
+		return nil, err
+	}
+	c.setAuthHeader(req)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/octet-stream")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		excerpt, _ := io.ReadAll(io.LimitReader(resp.Body, maxBodyExcerpt))
+		return nil, &Error{Status: resp.StatusCode, Body: string(excerpt), URL: full}
+	}
+	var wrapper struct {
+		Upload Upload `json:"upload"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&wrapper); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return &wrapper.Upload, nil
+}
+
 // assertSameOrigin verifies target shares scheme and host (including port)
 // with c.baseURL. Used to gate the auth header on attachment downloads.
 func (c *Client) assertSameOrigin(target string) error {

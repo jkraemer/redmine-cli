@@ -1,7 +1,9 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"io"
@@ -533,6 +535,167 @@ func TestSearch_OmitsUnsetFilters(t *testing.T) {
 		if strings.Contains(seenQuery, unwanted) {
 			t.Errorf("query should not contain %q: %s", unwanted, seenQuery)
 		}
+	}
+}
+
+func TestUploadFile_OK(t *testing.T) {
+	var seenMethod, seenPath, seenContentType, seenAccept, seenAPIKey string
+	var seenQuery string
+	var seenBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenMethod = r.Method
+		seenPath = r.URL.Path
+		seenQuery = r.URL.RawQuery
+		seenContentType = r.Header.Get("Content-Type")
+		seenAccept = r.Header.Get("Accept")
+		seenAPIKey = r.Header.Get("X-Redmine-API-Key")
+		seenBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(`{"upload":{"id":42,"token":"tok-abc"}}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	payload := []byte("hello attachment world")
+	up, err := c.UploadFile(context.Background(), bytes.NewReader(payload), "hi.txt", "text/plain")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seenMethod != "POST" {
+		t.Errorf("method=%s", seenMethod)
+	}
+	if seenPath != "/uploads.json" {
+		t.Errorf("path=%s", seenPath)
+	}
+	if seenContentType != "application/octet-stream" {
+		t.Errorf("content-type=%s", seenContentType)
+	}
+	if seenAccept != "application/json" {
+		t.Errorf("accept=%s", seenAccept)
+	}
+	if seenAPIKey != "test-key" {
+		t.Errorf("api key=%s", seenAPIKey)
+	}
+	if !strings.Contains(seenQuery, "filename=hi.txt") {
+		t.Errorf("query missing filename: %s", seenQuery)
+	}
+	// content_type contains a "/" which url.QueryEscape encodes as %2F.
+	if !strings.Contains(seenQuery, "content_type=text%2Fplain") {
+		t.Errorf("query missing content_type: %s", seenQuery)
+	}
+	if !bytes.Equal(seenBody, payload) {
+		t.Errorf("body mismatch: got %q want %q", string(seenBody), string(payload))
+	}
+	if up == nil || up.ID != 42 || up.Token != "tok-abc" {
+		t.Errorf("upload wrong: %+v", up)
+	}
+}
+
+// Streaming sanity check: a large body should arrive at the server intact —
+// same length, same content. We're not measuring memory, just confirming we
+// don't truncate or duplicate bytes along the way.
+func TestUploadFile_StreamsLargeBody(t *testing.T) {
+	const size = 1 << 20 // 1 MiB
+	payload := make([]byte, size)
+	if _, err := rand.Read(payload); err != nil {
+		t.Fatal(err)
+	}
+	var seenLen int
+	var seenSum []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		seenLen = len(body)
+		seenSum = body
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(`{"upload":{"id":1,"token":"t"}}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	if _, err := c.UploadFile(context.Background(), bytes.NewReader(payload), "big.bin", "application/octet-stream"); err != nil {
+		t.Fatal(err)
+	}
+	if seenLen != size {
+		t.Fatalf("server got %d bytes, want %d", seenLen, size)
+	}
+	if !bytes.Equal(seenSum, payload) {
+		t.Errorf("server-received bytes differ from sent payload")
+	}
+}
+
+// When filename and content_type are empty, the corresponding query params
+// must be absent so Redmine applies its own defaults (random filename,
+// guessed content type).
+func TestUploadFile_OmitsEmptyQueryParams(t *testing.T) {
+	var seenQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenQuery = r.URL.RawQuery
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(`{"upload":{"id":1,"token":"t"}}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	if _, err := c.UploadFile(context.Background(), bytes.NewReader([]byte("x")), "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(seenQuery, "filename") {
+		t.Errorf("query should not contain filename when empty: %s", seenQuery)
+	}
+	if strings.Contains(seenQuery, "content_type") {
+		t.Errorf("query should not contain content_type when empty: %s", seenQuery)
+	}
+}
+
+func TestUploadFile_ErrorPreservesBodyExcerpt(t *testing.T) {
+	const errBody = `{"errors":["File is invalid"]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(422)
+		_, _ = w.Write([]byte(errBody))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	_, err := c.UploadFile(context.Background(), bytes.NewReader([]byte("x")), "f.txt", "")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	var apiErr *Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *Error, got %T: %v", err, err)
+	}
+	if apiErr.Status != 422 {
+		t.Errorf("status=%d", apiErr.Status)
+	}
+	if !strings.Contains(apiErr.Body, "File is invalid") {
+		t.Errorf("body excerpt missing: %q", apiErr.Body)
+	}
+}
+
+func TestUploadFile_AuthHeaderToken(t *testing.T) {
+	var seenAuth, seenAPIKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuth = r.Header.Get("Authorization")
+		seenAPIKey = r.Header.Get("X-Redmine-API-Key")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(`{"upload":{"id":1,"token":"t"}}`))
+	}))
+	defer srv.Close()
+
+	c := NewWithToken(srv.URL, "bearer-xyz", srv.Client())
+	if _, err := c.UploadFile(context.Background(), bytes.NewReader([]byte("x")), "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if seenAuth != "Bearer bearer-xyz" {
+		t.Errorf("Authorization=%q", seenAuth)
+	}
+	if seenAPIKey != "" {
+		t.Errorf("X-Redmine-API-Key should not be sent on token client: %q", seenAPIKey)
 	}
 }
 
