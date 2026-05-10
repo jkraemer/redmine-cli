@@ -588,13 +588,11 @@ func TestIssuesCreate_Attach_Confirm_Single(t *testing.T) {
 		uploadCalls, createCalls int32
 		createBody               []byte
 	)
+	uploadH := uploadEchoHandler(t, &uploadCalls)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/uploads.json":
-			n := atomic.AddInt32(&uploadCalls, 1)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(201)
-			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+			uploadH(w, r)
 		case "/issues.json":
 			atomic.AddInt32(&createCalls, 1)
 			createBody, _ = io.ReadAll(r.Body)
@@ -609,11 +607,7 @@ func TestIssuesCreate_Attach_Confirm_Single(t *testing.T) {
 	defer srv.Close()
 	c := api.New(srv.URL, "k", srv.Client())
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "hello.txt")
-	if err := os.WriteFile(path, []byte("hi"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := mustWriteTempFile(t, t.TempDir(), "hello.txt", "hi")
 
 	var out bytes.Buffer
 	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
@@ -655,13 +649,11 @@ func TestIssuesCreate_Attach_Confirm_Multi(t *testing.T) {
 		uploadCalls, createCalls int32
 		createBody               []byte
 	)
+	uploadH := uploadEchoHandler(t, &uploadCalls)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/uploads.json":
-			n := atomic.AddInt32(&uploadCalls, 1)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(201)
-			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+			uploadH(w, r)
 		case "/issues.json":
 			atomic.AddInt32(&createCalls, 1)
 			createBody, _ = io.ReadAll(r.Body)
@@ -677,14 +669,8 @@ func TestIssuesCreate_Attach_Confirm_Multi(t *testing.T) {
 	c := api.New(srv.URL, "k", srv.Client())
 
 	dir := t.TempDir()
-	pa := filepath.Join(dir, "a.txt")
-	pb := filepath.Join(dir, "b.bin")
-	if err := os.WriteFile(pa, []byte("aa"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(pb, []byte("bb"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	pa := mustWriteTempFile(t, dir, "a.txt", "aa")
+	pb := mustWriteTempFile(t, dir, "b.bin", "bb")
 
 	var out bytes.Buffer
 	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
@@ -859,13 +845,11 @@ func TestIssuesUpdate_Attach_Alone_IsValid(t *testing.T) {
 		uploadCalls, updateCalls int32
 		updateBody               []byte
 	)
+	uploadH := uploadEchoHandler(t, &uploadCalls)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/uploads.json":
-			n := atomic.AddInt32(&uploadCalls, 1)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(201)
-			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+			uploadH(w, r)
 		case r.URL.Path == "/issues/7.json" && r.Method == "PUT":
 			atomic.AddInt32(&updateCalls, 1)
 			updateBody, _ = io.ReadAll(r.Body)
@@ -878,11 +862,7 @@ func TestIssuesUpdate_Attach_Alone_IsValid(t *testing.T) {
 	defer srv.Close()
 	c := api.New(srv.URL, "k", srv.Client())
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "hello.txt")
-	if err := os.WriteFile(path, []byte("hi"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := mustWriteTempFile(t, t.TempDir(), "hello.txt", "hi")
 
 	var out bytes.Buffer
 	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
@@ -928,13 +908,11 @@ func TestIssuesUpdate_Attach_WithOtherFields(t *testing.T) {
 		uploadCalls, updateCalls int32
 		updateBody               []byte
 	)
+	uploadH := uploadEchoHandler(t, &uploadCalls)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/uploads.json":
-			n := atomic.AddInt32(&uploadCalls, 1)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(201)
-			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+			uploadH(w, r)
 		case r.URL.Path == "/issues/7.json" && r.Method == "PUT":
 			atomic.AddInt32(&updateCalls, 1)
 			updateBody, _ = io.ReadAll(r.Body)
@@ -947,11 +925,7 @@ func TestIssuesUpdate_Attach_WithOtherFields(t *testing.T) {
 	defer srv.Close()
 	c := api.New(srv.URL, "k", srv.Client())
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "patch.diff")
-	if err := os.WriteFile(path, []byte("diff"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	path := mustWriteTempFile(t, t.TempDir(), "patch.diff", "diff")
 
 	var out bytes.Buffer
 	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}

@@ -139,6 +139,36 @@ func uploadOne(ctx context.Context, c *api.Client, spec attachSpec, name string)
 	return c.UploadFile(ctx, f, name, spec.ContentType)
 }
 
+// applyAttachments handles the dry-run vs confirm split for an --attach
+// batch shared by every command that accepts attachments.
+//
+// In dry-run mode (confirm == false) it sets *target to placeholder
+// UploadRefs so the rendered preview body is shaped like the real one;
+// the caller then passes the original specs to renderDryRun for the
+// "Would upload …" preamble. No HTTP requests happen.
+//
+// In confirm mode it pre-flights every spec, uploads each file in order,
+// and assigns the resulting UploadRefs to *target. On any error *target
+// is left untouched so a partially-built batch never reaches the server.
+func applyAttachments(ctx context.Context, c *api.Client, specs []attachSpec, target *[]api.UploadRef, confirm bool) error {
+	if len(specs) == 0 {
+		return nil
+	}
+	if !confirm {
+		*target = attachDryRun(specs)
+		return nil
+	}
+	if err := preflightAttachSpecs(specs); err != nil {
+		return err
+	}
+	refs, err := uploadAttachments(ctx, c, specs)
+	if err != nil {
+		return err
+	}
+	*target = refs
+	return nil
+}
+
 // attachDryRun builds placeholder UploadRefs for dry-run output so the
 // rendered create/update body is shaped exactly like the real one. The
 // token uses the form "<UPLOAD-TOKEN-FOR-{filename}>".

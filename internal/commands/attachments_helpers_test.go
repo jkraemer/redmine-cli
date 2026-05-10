@@ -206,6 +206,37 @@ func TestPreflightAttachSpecs_AggregatesFailures(t *testing.T) {
 	}
 }
 
+// uploadEchoHandler returns an http.HandlerFunc that records each call by
+// incrementing *calls and replies with {"upload":{"id":n,"token":"tok-n"}}.
+// Use it as the upload-side branch of a path-dispatching test handler.
+func uploadEchoHandler(t *testing.T, calls *int32) http.HandlerFunc {
+	t.Helper()
+	return func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(calls, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(201)
+		_, _ = w.Write([]byte(uploadResponseBody(n)))
+	}
+}
+
+// uploadResponseBody renders the canonical /uploads.json success body for
+// call number n. Kept as its own helper so handlers that need custom
+// behaviour (e.g. mid-batch failure) can still reuse the success shape.
+func uploadResponseBody(n int32) string {
+	return fmt.Sprintf(`{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+}
+
+// mustWriteTempFile writes content to dir/name with mode 0644 and returns
+// the absolute path; it fails the test on error.
+func mustWriteTempFile(t *testing.T, dir, name, content string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	return path
+}
+
 // uploadServer counts calls and returns sequential tokens "tok-1", "tok-2",
 // ... unless failOn is non-zero, in which case the matching call returns 500.
 type uploadServer struct {

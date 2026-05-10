@@ -88,6 +88,7 @@ func newWikiGetCmd(rc *runCtx) *cobra.Command {
 func newWikiPutCmd(rc *runCtx) *cobra.Command {
 	var projectID, text, textFile, comments string
 	var confirm bool
+	var attachStrs []string
 
 	cmd := &cobra.Command{
 		Use:   "put <title>",
@@ -110,12 +111,20 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 				text = string(data)
 			}
 
+			specs, err := parseAttachSpecs(attachStrs)
+			if err != nil {
+				return err
+			}
+
 			payload := api.WikiPageWrite{Text: text, Comments: comments}
-			body := map[string]any{"wiki_page": payload}
 			path := fmt.Sprintf("/projects/%s/wiki/%s.json", projectID, title)
 
+			if err := applyAttachments(rc.ctx(), rc.client, specs, &payload.Uploads, confirm); err != nil {
+				return err
+			}
 			if !confirm {
-				return renderDryRun(rc, "PUT", path, body, nil)
+				body := map[string]any{"wiki_page": payload}
+				return renderDryRun(rc, "PUT", path, body, specs)
 			}
 
 			page, err := rc.client.PutWikiPage(rc.ctx(), projectID, title, payload)
@@ -138,6 +147,7 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&text, "text", "", "Page content (Textile markup)")
 	cmd.Flags().StringVar(&textFile, "text-file", "", "Read page content from file (mutually exclusive with --text)")
 	cmd.Flags().StringVar(&comments, "comments", "", "Edit summary / comment")
+	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }

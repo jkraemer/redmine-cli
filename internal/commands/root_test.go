@@ -34,6 +34,7 @@ func buildRootForTest(rc *runCtx) *cobra.Command {
 	root.AddCommand(newPrioritiesCmd(rc))
 	root.AddCommand(newTimeActivitiesCmd(rc))
 	root.AddCommand(newSearchCmd(rc))
+	root.AddCommand(newWikiCmd(rc))
 	return root
 }
 

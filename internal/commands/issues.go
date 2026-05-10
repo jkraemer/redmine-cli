@@ -225,19 +225,13 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 				DoneRatio:     done,
 				CustomFields:  cfs,
 			}
+			if err := applyAttachments(rc.ctx(), rc.client, specs, &payload.Uploads, confirm); err != nil {
+				return err
+			}
 			if !confirm {
-				payload.Uploads = attachDryRun(specs)
 				body := map[string]any{"issue": payload}
 				return renderDryRun(rc, "POST", "/issues.json", body, specs)
 			}
-			if err := preflightAttachSpecs(specs); err != nil {
-				return err
-			}
-			refs, err := uploadAttachments(rc.ctx(), rc.client, specs)
-			if err != nil {
-				return err
-			}
-			payload.Uploads = refs
 			issue, err := rc.client.CreateIssue(rc.ctx(), payload)
 			if err != nil {
 				return err
@@ -353,19 +347,13 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			}
 
 			path := fmt.Sprintf("/issues/%d.json", id)
+			if err := applyAttachments(rc.ctx(), rc.client, specs, &payload.Uploads, confirm); err != nil {
+				return err
+			}
 			if !confirm {
-				payload.Uploads = attachDryRun(specs)
 				body := map[string]any{"issue": payload}
 				return renderDryRun(rc, "PUT", path, body, specs)
 			}
-			if err := preflightAttachSpecs(specs); err != nil {
-				return err
-			}
-			refs, err := uploadAttachments(rc.ctx(), rc.client, specs)
-			if err != nil {
-				return err
-			}
-			payload.Uploads = refs
 			if err := rc.client.UpdateIssue(rc.ctx(), id, payload); err != nil {
 				return err
 			}
