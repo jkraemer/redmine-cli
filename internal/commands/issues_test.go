@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/jkraemer/redmine-cli/internal/api"
 )
 
 func TestIssuesList_FiltersAndJSON(t *testing.T) {
@@ -521,6 +524,296 @@ func TestIssuesList_All_RespectsCap(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "narrow") {
 		t.Errorf("err=%q, want mention of 'narrow'", err.Error())
+	}
+}
+
+// TestIssuesCreate_Attach_DryRun verifies that a dry-run create with --attach
+// surfaces a top-level "would_upload" entry and embeds a placeholder token in
+// the issue body's "uploads" array. No HTTP requests should be made.
+func TestIssuesCreate_Attach_DryRun(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode (path=%s)", r.URL.Path)
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create",
+		"--project", "P", "--tracker", "1", "--subject", "S",
+		"--attach", "foo.txt"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	wu, ok := got["would_upload"].([]any)
+	if !ok {
+		t.Fatalf("would_upload not an array: %T %v", got["would_upload"], got["would_upload"])
+	}
+	if len(wu) != 1 {
+		t.Fatalf("len(would_upload)=%d", len(wu))
+	}
+	first, _ := wu[0].(map[string]any)
+	if first["path"] != "foo.txt" {
+		t.Errorf("would_upload[0].path=%v", first["path"])
+	}
+
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	uploads, ok := issue["uploads"].([]any)
+	if !ok {
+		t.Fatalf("issue.uploads not an array: %v", issue["uploads"])
+	}
+	if len(uploads) != 1 {
+		t.Fatalf("len(issue.uploads)=%d", len(uploads))
+	}
+	u0, _ := uploads[0].(map[string]any)
+	if u0["token"] != "<UPLOAD-TOKEN-FOR-foo.txt>" {
+		t.Errorf("token=%v", u0["token"])
+	}
+	if u0["filename"] != "foo.txt" {
+		t.Errorf("filename=%v", u0["filename"])
+	}
+}
+
+// TestIssuesCreate_Attach_Confirm_Single verifies the wired confirm path:
+// the upload happens before the create, and the resulting upload token is
+// referenced in the create body's uploads array.
+func TestIssuesCreate_Attach_Confirm_Single(t *testing.T) {
+	var (
+		uploadCalls, createCalls int32
+		createBody               []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/uploads.json":
+			atomic.AddInt32(&uploadCalls, 1)
+			n := atomic.LoadInt32(&uploadCalls)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+		case "/issues.json":
+			atomic.AddInt32(&createCalls, 1)
+			createBody, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(`{"issue":{"id":42,"subject":"S","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"T"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"N"},"author":{"id":1,"name":"A"}}}`))
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(path, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create",
+		"--project", "P", "--tracker", "1", "--subject", "S",
+		"--attach", path, "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got := atomic.LoadInt32(&uploadCalls); got != 1 {
+		t.Errorf("upload calls=%d, want 1", got)
+	}
+	if got := atomic.LoadInt32(&createCalls); got != 1 {
+		t.Errorf("create calls=%d, want 1", got)
+	}
+	var bodyJSON map[string]any
+	if err := json.Unmarshal(createBody, &bodyJSON); err != nil {
+		t.Fatalf("create body not JSON: %v", err)
+	}
+	issue, _ := bodyJSON["issue"].(map[string]any)
+	uploads, ok := issue["uploads"].([]any)
+	if !ok || len(uploads) != 1 {
+		t.Fatalf("issue.uploads wrong: %v", issue["uploads"])
+	}
+	u0, _ := uploads[0].(map[string]any)
+	if u0["token"] != "tok-1" {
+		t.Errorf("token=%v", u0["token"])
+	}
+	if u0["filename"] != "hello.txt" {
+		t.Errorf("filename=%v", u0["filename"])
+	}
+}
+
+// TestIssuesCreate_Attach_Confirm_Multi verifies two attachments end up in
+// the create body in spec order with their respective tokens.
+func TestIssuesCreate_Attach_Confirm_Multi(t *testing.T) {
+	var (
+		uploadCalls, createCalls int32
+		createBody               []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/uploads.json":
+			n := atomic.AddInt32(&uploadCalls, 1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+		case "/issues.json":
+			atomic.AddInt32(&createCalls, 1)
+			createBody, _ = io.ReadAll(r.Body)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(`{"issue":{"id":42,"subject":"S","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"T"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"N"},"author":{"id":1,"name":"A"}}}`))
+		default:
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	dir := t.TempDir()
+	pa := filepath.Join(dir, "a.txt")
+	pb := filepath.Join(dir, "b.bin")
+	if err := os.WriteFile(pa, []byte("aa"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pb, []byte("bb"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create",
+		"--project", "P", "--tracker", "1", "--subject", "S",
+		"--attach", pa, "--attach", pb, "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got := atomic.LoadInt32(&uploadCalls); got != 2 {
+		t.Errorf("upload calls=%d, want 2", got)
+	}
+	if got := atomic.LoadInt32(&createCalls); got != 1 {
+		t.Errorf("create calls=%d, want 1", got)
+	}
+	var bodyJSON map[string]any
+	if err := json.Unmarshal(createBody, &bodyJSON); err != nil {
+		t.Fatalf("create body not JSON: %v", err)
+	}
+	issue, _ := bodyJSON["issue"].(map[string]any)
+	uploads, _ := issue["uploads"].([]any)
+	if len(uploads) != 2 {
+		t.Fatalf("len(uploads)=%d", len(uploads))
+	}
+	u0, _ := uploads[0].(map[string]any)
+	u1, _ := uploads[1].(map[string]any)
+	if u0["token"] != "tok-1" || u0["filename"] != "a.txt" {
+		t.Errorf("uploads[0]=%v", u0)
+	}
+	if u1["token"] != "tok-2" || u1["filename"] != "b.bin" {
+		t.Errorf("uploads[1]=%v", u1)
+	}
+}
+
+// TestIssuesCreate_Attach_PreflightFailure_NoServerCall verifies that a
+// missing local file aborts before any HTTP request is made.
+func TestIssuesCreate_Attach_PreflightFailure_NoServerCall(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		t.Errorf("server should not be called when pre-flight fails (path=%s)", r.URL.Path)
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	missing := filepath.Join(t.TempDir(), "does-not-exist.txt")
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create",
+		"--project", "P", "--tracker", "1", "--subject", "S",
+		"--attach", missing, "--confirm"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("err=%q, want mention of %q", err.Error(), missing)
+	}
+	if got := atomic.LoadInt32(&calls); got != 0 {
+		t.Errorf("calls=%d, want 0", got)
+	}
+}
+
+// TestIssuesCreate_Attach_MidBatchUploadFailure verifies that a 500 on the
+// second upload short-circuits before the create call, with an error that
+// names "attach 2/2 (path)".
+func TestIssuesCreate_Attach_MidBatchUploadFailure(t *testing.T) {
+	var (
+		uploadCalls, createCalls int32
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/uploads.json":
+			n := atomic.AddInt32(&uploadCalls, 1)
+			if n == 2 {
+				w.WriteHeader(500)
+				_, _ = w.Write([]byte(`{"error":"boom"}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+		case "/issues.json":
+			atomic.AddInt32(&createCalls, 1)
+			t.Errorf("create should not be called when an upload fails")
+			w.WriteHeader(201)
+			_, _ = w.Write([]byte(`{"issue":{}}`))
+		default:
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	dir := t.TempDir()
+	pa := filepath.Join(dir, "a.txt")
+	pb := filepath.Join(dir, "b.txt")
+	if err := os.WriteFile(pa, []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pb, []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create",
+		"--project", "P", "--tracker", "1", "--subject", "S",
+		"--attach", pa, "--attach", pb, "--confirm"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "attach 2/2") {
+		t.Errorf("err=%q, want 'attach 2/2'", err.Error())
+	}
+	if !strings.Contains(err.Error(), pb) {
+		t.Errorf("err=%q, want mention of path %q", err.Error(), pb)
+	}
+	if got := atomic.LoadInt32(&uploadCalls); got != 2 {
+		t.Errorf("upload calls=%d, want 2", got)
+	}
+	if got := atomic.LoadInt32(&createCalls); got != 0 {
+		t.Errorf("create calls=%d, want 0", got)
 	}
 }
 

@@ -178,7 +178,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 		project, subject, description, assignee, startDate, dueDate string
 		tracker, status, priority, parent, done                     int
 		confirm                                                     bool
-		cfStrs                                                      []string
+		cfStrs, attachStrs                                          []string
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -206,6 +206,10 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			specs, err := parseAttachSpecs(attachStrs)
+			if err != nil {
+				return err
+			}
 
 			payload := api.IssueCreate{
 				ProjectID:     project,
@@ -221,10 +225,19 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 				DoneRatio:     done,
 				CustomFields:  cfs,
 			}
-			body := map[string]any{"issue": payload}
 			if !confirm {
-				return renderDryRun(rc, "POST", "/issues.json", body, nil)
+				payload.Uploads = attachDryRun(specs)
+				body := map[string]any{"issue": payload}
+				return renderDryRun(rc, "POST", "/issues.json", body, specs)
 			}
+			if err := preflightAttachSpecs(specs); err != nil {
+				return err
+			}
+			refs, err := uploadAttachments(rc.ctx(), rc.client, specs)
+			if err != nil {
+				return err
+			}
+			payload.Uploads = refs
 			issue, err := rc.client.CreateIssue(rc.ctx(), payload)
 			if err != nil {
 				return err
@@ -244,6 +257,8 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
 	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
+	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil,
+		"Attach a file: bare path, or JSON {path,filename,description,content_type} (repeatable)")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }
