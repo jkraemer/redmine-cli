@@ -47,11 +47,13 @@ func parseAttachSpecs(values []string) ([]attachSpec, error) {
 		trimmed := strings.TrimLeft(v, " \t\r\n")
 		var spec attachSpec
 		if strings.HasPrefix(trimmed, "{") {
-			if err := json.Unmarshal([]byte(trimmed), &spec); err != nil {
+			dec := json.NewDecoder(strings.NewReader(trimmed))
+			dec.DisallowUnknownFields()
+			if err := dec.Decode(&spec); err != nil {
 				return nil, fmt.Errorf("--attach %d: invalid JSON: %w", i+1, err)
 			}
 		} else {
-			spec = attachSpec{Path: v}
+			spec = attachSpec{Path: trimmed}
 		}
 		if spec.Path == "" {
 			return nil, fmt.Errorf("--attach %d: path is required", i+1)

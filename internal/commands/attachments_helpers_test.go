@@ -81,6 +81,32 @@ func TestParseAttachSpecs_JSONLeadingWhitespace(t *testing.T) {
 	}
 }
 
+func TestParseAttachSpecs_BarePathLeadingWhitespace(t *testing.T) {
+	specs, err := parseAttachSpecs([]string{"  foo.pdf"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 1 {
+		t.Fatalf("len=%d", len(specs))
+	}
+	if specs[0].Path != "foo.pdf" {
+		t.Errorf("path=%q, want %q", specs[0].Path, "foo.pdf")
+	}
+}
+
+func TestParseAttachSpecs_JSONUnknownField(t *testing.T) {
+	_, err := parseAttachSpecs([]string{`{"path":"x","tpyo":"foo"}`})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "--attach 1: invalid JSON:") {
+		t.Errorf("err=%q, want '--attach 1: invalid JSON:' prefix", err)
+	}
+	if !strings.Contains(err.Error(), "tpyo") {
+		t.Errorf("err=%q, want mention of unknown field 'tpyo'", err)
+	}
+}
+
 func TestParseAttachSpecs_EmptyInput(t *testing.T) {
 	for _, in := range [][]string{nil, {}} {
 		specs, err := parseAttachSpecs(in)
