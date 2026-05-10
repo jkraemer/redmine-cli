@@ -140,9 +140,12 @@ may expose different scopes.
     ./redmine-cli projects list
     ./redmine-cli issues list --project myproj --status open --limit 10
     ./redmine-cli issues get 1459
+    ./redmine-cli issues create --project myproj --tracker 1 --subject "Bug" --attach screenshot.png --confirm
+    ./redmine-cli issues update 1459 --attach patch.diff --notes "see attached" --confirm
     ./redmine-cli attachments download 42
     ./redmine-cli wiki list --project myproj
     ./redmine-cli wiki get Architecture --project myproj
     ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --confirm
+    ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --attach diagram.png --confirm
 
 See `./redmine-cli --agent --help` for machine-readable help.

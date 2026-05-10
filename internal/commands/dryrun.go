@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -26,12 +27,18 @@ func renderDryRun(rc *runCtx, method, path string, body any, wouldUpload []attac
 				fmt.Fprintf(&b, "  %d. %s%s\n", i+1, spec.Path, attachMetaParens(spec))
 			}
 		}
-		raw, err := json.MarshalIndent(body, "", "  ")
-		if err != nil {
+		var raw bytes.Buffer
+		enc := json.NewEncoder(&raw)
+		enc.SetIndent("", "  ")
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(body); err != nil {
 			return err
 		}
-		fmt.Fprintf(&b, "DRY RUN -- would %s %s with body:\n```json\n%s\n```\n(re-run with --confirm to send)\n", method, path, raw)
-		_, err = fmt.Fprint(rc.out, b.String())
+		// json.Encoder.Encode appends a trailing newline; trim it so the
+		// closing ``` sits flush against the last line of JSON, matching
+		// the previous json.MarshalIndent behavior.
+		fmt.Fprintf(&b, "DRY RUN -- would %s %s with body:\n```json\n%s\n```\n(re-run with --confirm to send)\n", method, path, strings.TrimRight(raw.String(), "\n"))
+		_, err := fmt.Fprint(rc.out, b.String())
 		return err
 	}
 	payload := map[string]any{

@@ -551,6 +551,38 @@ func TestRenderDryRun_NoUploads_JSONUnchanged(t *testing.T) {
 	}
 }
 
+func TestRenderDryRun_Markdown_DoesNotHTMLEscape(t *testing.T) {
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, format: "markdown"}
+	body := map[string]any{
+		"issue": map[string]any{
+			"subject":     "x",
+			"description": "see <tag> & friends",
+		},
+	}
+	specs := []attachSpec{{Path: "/local/path/foo.txt"}}
+	wouldUpload := attachDryRun(specs)
+	body["issue"].(map[string]any)["uploads"] = wouldUpload
+	if err := renderDryRun(rc, "POST", "/issues.json", body, specs); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	// Placeholder token must appear unescaped.
+	if !strings.Contains(got, "<UPLOAD-TOKEN-FOR-foo.txt>") {
+		t.Errorf("missing literal placeholder token, got:\n%s", got)
+	}
+	if strings.Contains(got, "\\u003cUPLOAD-TOKEN-FOR-foo.txt\\u003e") {
+		t.Errorf("placeholder was HTML-escaped:\n%s", got)
+	}
+	// User-visible '<' in the body must also appear unescaped.
+	if !strings.Contains(got, "see <tag> & friends") {
+		t.Errorf("user description was escaped, got:\n%s", got)
+	}
+	if strings.Contains(got, "\\u003ctag\\u003e") {
+		t.Errorf("'<tag>' was HTML-escaped:\n%s", got)
+	}
+}
+
 func TestRenderDryRun_WithUploads_JSON(t *testing.T) {
 	var out bytes.Buffer
 	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, format: "json"}
