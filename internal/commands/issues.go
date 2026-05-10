@@ -257,8 +257,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
 	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
-	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil,
-		"Attach a file: bare path, or JSON {path,filename,description,content_type} (repeatable)")
+	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }
@@ -268,7 +267,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 		subject, description, assignee, notes, notesFile, startDate, dueDate string
 		status, priority, done                                               int
 		confirm                                                              bool
-		cfStrs                                                               []string
+		cfStrs, attachStrs                                                   []string
 	)
 	cmd := &cobra.Command{
 		Use:   "update <id>",
@@ -280,7 +279,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("invalid issue id %q", args[0])
 			}
 
-			mutating := []string{"subject", "description", "status", "assignee", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf"}
+			mutating := []string{"subject", "description", "status", "assignee", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf", "attach"}
 			anySet := false
 			for _, n := range mutating {
 				if cmd.Flags().Changed(n) {
@@ -313,6 +312,10 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("--done must be between 0 and 100")
 			}
 			cfs, err := parseCustomFields(cfStrs)
+			if err != nil {
+				return err
+			}
+			specs, err := parseAttachSpecs(attachStrs)
 			if err != nil {
 				return err
 			}
@@ -349,11 +352,20 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				payload.CustomFields = cfs
 			}
 
-			body := map[string]any{"issue": payload}
 			path := fmt.Sprintf("/issues/%d.json", id)
 			if !confirm {
-				return renderDryRun(rc, "PUT", path, body, nil)
+				payload.Uploads = attachDryRun(specs)
+				body := map[string]any{"issue": payload}
+				return renderDryRun(rc, "PUT", path, body, specs)
 			}
+			if err := preflightAttachSpecs(specs); err != nil {
+				return err
+			}
+			refs, err := uploadAttachments(rc.ctx(), rc.client, specs)
+			if err != nil {
+				return err
+			}
+			payload.Uploads = refs
 			if err := rc.client.UpdateIssue(rc.ctx(), id, payload); err != nil {
 				return err
 			}
@@ -376,6 +388,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&startDate, "start-date", "", "New start date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "New due date (YYYY-MM-DD)")
 	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
+	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
 	return cmd
 }

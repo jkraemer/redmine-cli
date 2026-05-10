@@ -591,8 +591,7 @@ func TestIssuesCreate_Attach_Confirm_Single(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/uploads.json":
-			atomic.AddInt32(&uploadCalls, 1)
-			n := atomic.LoadInt32(&uploadCalls)
+			n := atomic.AddInt32(&uploadCalls, 1)
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(201)
 			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
@@ -849,5 +848,272 @@ func TestIssuesCreate_CustomFields_BadFormat(t *testing.T) {
 				t.Errorf("err=%q, want mention of --cf", err.Error())
 			}
 		})
+	}
+}
+
+// TestIssuesUpdate_Attach_Alone_IsValid verifies that --attach by itself
+// satisfies the "at least one mutating field" guard, and that the resulting
+// PUT body carries only the uploads (no other issue fields).
+func TestIssuesUpdate_Attach_Alone_IsValid(t *testing.T) {
+	var (
+		uploadCalls, updateCalls int32
+		updateBody               []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/uploads.json":
+			n := atomic.AddInt32(&uploadCalls, 1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+		case r.URL.Path == "/issues/7.json" && r.Method == "PUT":
+			atomic.AddInt32(&updateCalls, 1)
+			updateBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(204)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hello.txt")
+	if err := os.WriteFile(path, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--attach", path, "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got := atomic.LoadInt32(&uploadCalls); got != 1 {
+		t.Errorf("upload calls=%d, want 1", got)
+	}
+	if got := atomic.LoadInt32(&updateCalls); got != 1 {
+		t.Errorf("update calls=%d, want 1", got)
+	}
+	var bodyJSON map[string]any
+	if err := json.Unmarshal(updateBody, &bodyJSON); err != nil {
+		t.Fatalf("update body not JSON: %v", err)
+	}
+	issue, _ := bodyJSON["issue"].(map[string]any)
+	uploads, ok := issue["uploads"].([]any)
+	if !ok || len(uploads) != 1 {
+		t.Fatalf("issue.uploads wrong: %v", issue["uploads"])
+	}
+	u0, _ := uploads[0].(map[string]any)
+	if u0["token"] != "tok-1" {
+		t.Errorf("token=%v", u0["token"])
+	}
+	if u0["filename"] != "hello.txt" {
+		t.Errorf("filename=%v", u0["filename"])
+	}
+	// Only "uploads" should be present — no other issue fields set.
+	for k := range issue {
+		if k != "uploads" {
+			t.Errorf("unexpected field in update body: %q", k)
+		}
+	}
+}
+
+// TestIssuesUpdate_Attach_WithOtherFields verifies that --attach combines
+// with other mutating flags in the same PUT body.
+func TestIssuesUpdate_Attach_WithOtherFields(t *testing.T) {
+	var (
+		uploadCalls, updateCalls int32
+		updateBody               []byte
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/uploads.json":
+			n := atomic.AddInt32(&uploadCalls, 1)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+		case r.URL.Path == "/issues/7.json" && r.Method == "PUT":
+			atomic.AddInt32(&updateCalls, 1)
+			updateBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(204)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "patch.diff")
+	if err := os.WriteFile(path, []byte("diff"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7",
+		"--notes", "see attached", "--attach", path, "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got := atomic.LoadInt32(&uploadCalls); got != 1 {
+		t.Errorf("upload calls=%d, want 1", got)
+	}
+	if got := atomic.LoadInt32(&updateCalls); got != 1 {
+		t.Errorf("update calls=%d, want 1", got)
+	}
+	var bodyJSON map[string]any
+	if err := json.Unmarshal(updateBody, &bodyJSON); err != nil {
+		t.Fatalf("update body not JSON: %v", err)
+	}
+	issue, _ := bodyJSON["issue"].(map[string]any)
+	if issue["notes"] != "see attached" {
+		t.Errorf("notes=%v", issue["notes"])
+	}
+	uploads, ok := issue["uploads"].([]any)
+	if !ok || len(uploads) != 1 {
+		t.Fatalf("issue.uploads wrong: %v", issue["uploads"])
+	}
+	u0, _ := uploads[0].(map[string]any)
+	if u0["filename"] != "patch.diff" {
+		t.Errorf("filename=%v", u0["filename"])
+	}
+}
+
+// TestIssuesUpdate_Attach_DryRun verifies dry-run mode for update + --attach:
+// no HTTP calls, would_upload surfaced, placeholder token in body.
+func TestIssuesUpdate_Attach_DryRun(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode (path=%s)", r.URL.Path)
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--attach", "foo.txt"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["method"] != "PUT" || got["path"] != "/issues/7.json" {
+		t.Errorf("wrong request preview: %v", got)
+	}
+	wu, ok := got["would_upload"].([]any)
+	if !ok {
+		t.Fatalf("would_upload not an array: %T %v", got["would_upload"], got["would_upload"])
+	}
+	if len(wu) != 1 {
+		t.Fatalf("len(would_upload)=%d", len(wu))
+	}
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	uploads, ok := issue["uploads"].([]any)
+	if !ok || len(uploads) != 1 {
+		t.Fatalf("issue.uploads wrong: %v", issue["uploads"])
+	}
+	u0, _ := uploads[0].(map[string]any)
+	if u0["token"] != "<UPLOAD-TOKEN-FOR-foo.txt>" {
+		t.Errorf("token=%v", u0["token"])
+	}
+}
+
+// TestIssuesUpdate_Attach_PreflightFailure_NoServerCall verifies that a
+// missing local file aborts before any HTTP request.
+func TestIssuesUpdate_Attach_PreflightFailure_NoServerCall(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		t.Errorf("server should not be called when pre-flight fails (path=%s)", r.URL.Path)
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	missing := filepath.Join(t.TempDir(), "does-not-exist.txt")
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--attach", missing, "--confirm"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), missing) {
+		t.Errorf("err=%q, want mention of %q", err.Error(), missing)
+	}
+	if got := atomic.LoadInt32(&calls); got != 0 {
+		t.Errorf("calls=%d, want 0", got)
+	}
+}
+
+// TestIssuesUpdate_Attach_MidBatchUploadFailure verifies that a 500 on the
+// second upload short-circuits before the PUT call.
+func TestIssuesUpdate_Attach_MidBatchUploadFailure(t *testing.T) {
+	var (
+		uploadCalls, updateCalls int32
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/uploads.json":
+			n := atomic.AddInt32(&uploadCalls, 1)
+			if n == 2 {
+				w.WriteHeader(500)
+				_, _ = w.Write([]byte(`{"error":"boom"}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(201)
+			_, _ = fmt.Fprintf(w, `{"upload":{"id":%d,"token":"tok-%d"}}`, n, n)
+		case r.URL.Path == "/issues/7.json" && r.Method == "PUT":
+			atomic.AddInt32(&updateCalls, 1)
+			t.Errorf("update should not be called when an upload fails")
+			w.WriteHeader(204)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	dir := t.TempDir()
+	pa := filepath.Join(dir, "a.txt")
+	pb := filepath.Join(dir, "b.txt")
+	if err := os.WriteFile(pa, []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pb, []byte("b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7",
+		"--attach", pa, "--attach", pb, "--confirm"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "attach 2/2") {
+		t.Errorf("err=%q, want 'attach 2/2'", err.Error())
+	}
+	if !strings.Contains(err.Error(), pb) {
+		t.Errorf("err=%q, want mention of %q", err.Error(), pb)
+	}
+	if got := atomic.LoadInt32(&uploadCalls); got != 2 {
+		t.Errorf("upload calls=%d, want 2", got)
+	}
+	if got := atomic.LoadInt32(&updateCalls); got != 0 {
+		t.Errorf("update calls=%d, want 0", got)
 	}
 }

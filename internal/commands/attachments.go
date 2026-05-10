@@ -17,6 +17,11 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
+// attachFlagHelp is the shared --attach help text used by every command
+// that accepts attachments (issues create, issues update, wiki put). Keeping
+// it in one place ensures the three call sites stay in sync.
+const attachFlagHelp = "Attach a file: bare path, or JSON {path,filename,description,content_type} (repeatable)"
+
 // attachSpec is one parsed --attach value. Both forms (bare path and
 // JSON object) decode into this shape.
 type attachSpec struct {
