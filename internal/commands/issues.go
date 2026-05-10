@@ -223,7 +223,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 			}
 			body := map[string]any{"issue": payload}
 			if !confirm {
-				return renderDryRun(rc, "POST", "/issues.json", body)
+				return renderDryRun(rc, "POST", "/issues.json", body, nil)
 			}
 			issue, err := rc.client.CreateIssue(rc.ctx(), payload)
 			if err != nil {
@@ -337,7 +337,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			body := map[string]any{"issue": payload}
 			path := fmt.Sprintf("/issues/%d.json", id)
 			if !confirm {
-				return renderDryRun(rc, "PUT", path, body)
+				return renderDryRun(rc, "PUT", path, body, nil)
 			}
 			if err := rc.client.UpdateIssue(rc.ctx(), id, payload); err != nil {
 				return err

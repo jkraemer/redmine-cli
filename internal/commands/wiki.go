@@ -115,7 +115,7 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 			path := fmt.Sprintf("/projects/%s/wiki/%s.json", projectID, title)
 
 			if !confirm {
-				return renderDryRun(rc, "PUT", path, body)
+				return renderDryRun(rc, "PUT", path, body, nil)
 			}
 
 			page, err := rc.client.PutWikiPage(rc.ctx(), projectID, title, payload)

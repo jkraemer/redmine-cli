@@ -56,7 +56,7 @@ func newTimeLogCmd(rc *runCtx) *cobra.Command {
 
 			body := map[string]any{"time_entry": payload}
 			if !confirm {
-				return renderDryRun(rc, "POST", "/time_entries.json", body)
+				return renderDryRun(rc, "POST", "/time_entries.json", body, nil)
 			}
 			te, err := rc.client.LogTime(rc.ctx(), payload)
 			if err != nil {
