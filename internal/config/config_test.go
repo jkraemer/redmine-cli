@@ -368,3 +368,11 @@ func TestSaveToken_CreatesFileIfMissing(t *testing.T) {
 		t.Errorf("file mode %#o, want 0600", info.Mode().Perm())
 	}
 }
+
+func TestSaveToken_RejectsNil(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &Config{Path: filepath.Join(dir, "cfg.toml")}
+	if err := cfg.SaveToken(nil); err == nil {
+		t.Fatal("expected error for nil token")
+	}
+}

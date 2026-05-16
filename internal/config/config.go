@@ -148,6 +148,9 @@ func (c *Config) SaveToken(tok *auth.Token) error {
 	if c.Path == "" {
 		return errors.New("config has no path; cannot save token")
 	}
+	if tok == nil {
+		return errors.New("SaveToken: nil token (use DeleteToken to clear)")
+	}
 	fc, err := readFileConfig(c.Path)
 	if err != nil {
 		return err
