@@ -73,7 +73,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 		if cmd.Parent() != nil && cmd.Parent().Name() == "auth" {
 			return nil
 		}
-		cfg, err := config.Load()
+		cfg, err := config.Load("")
 		if err != nil {
 			return err
 		}

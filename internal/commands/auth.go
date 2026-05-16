@@ -26,7 +26,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate via OAuth 2.0 (prints URL, prompts for code)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load()
+			cfg, err := config.Load("")
 			if err != nil {
 				return err
 			}
@@ -78,7 +78,7 @@ func newAuthStatusCmd(rc *runCtx) *cobra.Command {
 		Use:   "status",
 		Short: "Show current authentication status",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load()
+			cfg, err := config.Load("")
 			if err != nil {
 				return err
 			}

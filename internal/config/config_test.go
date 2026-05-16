@@ -13,7 +13,7 @@ func TestLoad_EnvOnly(t *testing.T) {
 	t.Setenv("REDMINE_API_KEY", "key123")
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -45,7 +45,7 @@ default_format = "markdown"
 	t.Setenv("REDMINE_URL", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestLoad_EnvOverridesTOML(t *testing.T) {
 	t.Setenv("REDMINE_URL", "https://env.example")
 	t.Setenv("REDMINE_API_KEY", "env-key")
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestLoad_WarnsWhenConfigFileIsGroupOrWorldReadable(t *testing.T) {
 	t.Setenv("REDMINE_URL", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestLoad_NoWarningWhenConfigFileIsTight(t *testing.T) {
 	t.Setenv("REDMINE_URL", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestLoad_MissingURL(t *testing.T) {
 	t.Setenv("REDMINE_URL", "")
 	t.Setenv("REDMINE_API_KEY", "k")
 
-	_, err := Load()
+	_, err := Load("")
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -158,13 +158,45 @@ oauth_scopes = ["view_project", "view_issues", "edit_issues"]
 	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
 	t.Setenv("REDMINE_OAUTH_SCOPES", "")
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := []string{"view_project", "view_issues", "edit_issues"}
 	if !reflect.DeepEqual(cfg.OAuthScopes, want) {
 		t.Errorf("OAuthScopes=%v want %v", cfg.OAuthScopes, want)
+	}
+}
+
+func TestLoad_ExplicitPath(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "alt.toml")
+	if err := os.WriteFile(p, []byte(`url = "https://alt.example"
+api_key = "alt-key"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.URL != "https://alt.example" {
+		t.Errorf("URL=%q", cfg.URL)
+	}
+	if cfg.Path != p {
+		t.Errorf("Path=%q want %q", cfg.Path, p)
+	}
+}
+
+func TestLoad_ExplicitPathMissing(t *testing.T) {
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	_, err := Load("/no/such/file.toml")
+	if err == nil {
+		t.Fatal("expected error for missing explicit path")
 	}
 }
 
@@ -179,7 +211,7 @@ func TestLoad_OAuthScopesEnvOverridesTOML(t *testing.T) {
 	t.Setenv("REDMINE_API_KEY", "")
 	t.Setenv("REDMINE_OAUTH_SCOPES", "view_project   view_issues") // extra spaces tolerated
 
-	cfg, err := Load()
+	cfg, err := Load("")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

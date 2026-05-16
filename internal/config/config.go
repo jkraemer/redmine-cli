@@ -21,6 +21,9 @@ type Config struct {
 	OAuthClientSecret string
 	OAuthScopes       []string
 	DefaultFormat     string
+	// Path is the resolved config file path (explicit or default). May be
+	// empty if no path could be resolved. The file may or may not exist.
+	Path string
 	// Warnings collects non-fatal issues found while loading config —
 	// e.g. an API key file that is readable by group/other. The CLI
 	// surfaces them on stderr but they don't block startup.
@@ -43,18 +46,34 @@ var ErrMissingURL = errors.New("redmine URL not configured (set REDMINE_URL or u
 var ErrMissingAPIKey = errors.New("redmine API key not configured (set REDMINE_API_KEY or api_key in config.toml)")
 
 // Load resolves configuration from env vars (highest priority) then a TOML
-// file at $XDG_CONFIG_HOME/redmine-cli/config.toml.
-func Load() (*Config, error) {
+// file. If path is empty, falls back to the default discovery path. If path
+// is non-empty and the file is missing, returns an error.
+func Load(path string) (*Config, error) {
 	var fc fileConfig
 	cfg := &Config{}
-	if path := configPath(); path != "" {
-		if info, err := os.Stat(path); err == nil {
-			if _, err := toml.DecodeFile(path, &fc); err != nil {
-				return nil, fmt.Errorf("parse %s: %w", path, err)
+	resolved := path
+	if resolved == "" {
+		resolved = defaultConfigPath()
+	}
+	cfg.Path = resolved
+
+	if resolved != "" {
+		info, err := os.Stat(resolved)
+		switch {
+		case err == nil:
+			if _, err := toml.DecodeFile(resolved, &fc); err != nil {
+				return nil, fmt.Errorf("parse %s: %w", resolved, err)
 			}
-			if w := insecurePermWarning(path, info); w != "" {
+			if w := insecurePermWarning(resolved, info); w != "" {
 				cfg.Warnings = append(cfg.Warnings, w)
 			}
+		case os.IsNotExist(err):
+			if path != "" {
+				return nil, fmt.Errorf("config file %s: %w", path, err)
+			}
+			// default path missing is fine — env-only mode
+		default:
+			return nil, err
 		}
 	}
 
@@ -86,7 +105,7 @@ func insecurePermWarning(path string, info os.FileInfo) string {
 	return fmt.Sprintf("config file %s is readable by group/other (mode %#o); consider chmod 600", path, mode)
 }
 
-func configPath() string {
+func defaultConfigPath() string {
 	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
 		return filepath.Join(base, "redmine-cli", "config.toml")
 	}
