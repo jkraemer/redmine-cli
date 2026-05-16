@@ -50,7 +50,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("token exchange: %w", err)
 			}
-			if err := auth.SaveToken(tok); err != nil {
+			if err := cfg.SaveToken(tok); err != nil {
 				return err
 			}
 			fmt.Fprintln(rc.out, "Authenticated successfully. Token saved.")
@@ -64,7 +64,11 @@ func newAuthLogoutCmd(rc *runCtx) *cobra.Command {
 		Use:   "logout",
 		Short: "Remove stored OAuth token",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := auth.DeleteToken(); err != nil {
+			cfg, err := config.Load("")
+			if err != nil {
+				return err
+			}
+			if err := cfg.DeleteToken(); err != nil {
 				return err
 			}
 			fmt.Fprintln(rc.out, "Logged out.")
@@ -83,10 +87,7 @@ func newAuthStatusCmd(rc *runCtx) *cobra.Command {
 				return err
 			}
 			if cfg.AuthMethod() == "oauth" {
-				tok, err := auth.LoadToken()
-				if err != nil {
-					return err
-				}
+				tok := cfg.Token
 				if tok == nil {
 					fmt.Fprintln(rc.out, "Auth method: oauth\nStatus:      not logged in (run: redmine-cli auth login)")
 					return nil

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/jkraemer/redmine-cli/internal/api"
 	"github.com/jkraemer/redmine-cli/internal/auth"
+	"github.com/jkraemer/redmine-cli/internal/config"
 )
 
 // buildRootForTest returns a minimal root command with the runCtx pre-populated.
@@ -105,17 +108,28 @@ func TestRunCtx_CancelsInFlightHTTP(t *testing.T) {
 func TestAuthStatus_ShowsScope(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("REDMINE_URL", "https://x")
-	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "cid")
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`oauth_client_id="cid"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
-	tok := &auth.Token{
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{
 		AccessToken: "AT",
 		TokenType:   "Bearer",
 		ExpiresAt:   time.Now().Add(time.Hour),
 		Scope:       "view_project edit_issues",
-	}
-	if err := auth.SaveToken(tok); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,16 +147,27 @@ func TestAuthStatus_ShowsScope(t *testing.T) {
 func TestAuthStatus_ShowsNoneWhenScopeMissing(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("REDMINE_URL", "https://x")
-	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "cid")
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`oauth_client_id="cid"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
-	tok := &auth.Token{
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{
 		AccessToken: "AT",
 		TokenType:   "Bearer",
 		ExpiresAt:   time.Now().Add(time.Hour),
-	}
-	if err := auth.SaveToken(tok); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 
