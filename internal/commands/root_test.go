@@ -182,6 +182,44 @@ func TestAuthStatus_ShowsNoneWhenScopeMissing(t *testing.T) {
 	}
 }
 
+func TestConfigFlag_PicksAlternatePath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // hermetic: no default config exists
+	altPath := filepath.Join(dir, "alt.toml")
+	if err := os.WriteFile(altPath, []byte(`url = "https://alt.example"
+oauth_client_id = "cid"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	// Seed a token via the alt-config path so auth status has something to show.
+	cfg, err := config.Load(altPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{
+		AccessToken: "AT",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(time.Hour),
+		Scope:       "view_project",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	root := Build(context.Background(), &out, &bytes.Buffer{})
+	root.SetArgs([]string{"--config", altPath, "auth", "status"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out.String(), "view_project") {
+		t.Errorf("--config did not select alt file; output: %s", out.String())
+	}
+}
+
 func TestRoot_Help_ListsSubcommands(t *testing.T) {
 	var out, errOut bytes.Buffer
 	root := Build(context.Background(), &out, &errOut)

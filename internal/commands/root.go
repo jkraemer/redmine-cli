@@ -24,6 +24,7 @@ type runCtx struct {
 	client      *api.Client
 	format      string // "json" or "markdown"
 	agentHelp   bool
+	configPath  string
 	// parentCtx is the cancellable context for the whole CLI run. The
 	// production wiring derives it from os.Interrupt/SIGTERM in Execute,
 	// so Ctrl-C cancels any in-flight HTTP request. Tests may set their
@@ -48,6 +49,8 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.SetErr(errOut)
 
 	root.PersistentFlags().StringVarP(&rc.format, "format", "f", "", "Output format: json or markdown (default from config)")
+	root.PersistentFlags().StringVarP(&rc.configPath, "config", "c", "",
+		"Path to config file (default: $XDG_CONFIG_HOME/redmine-cli/config.toml)")
 	root.PersistentFlags().BoolVar(&rc.agentHelp, "agent", false, "When combined with --help, emit machine-readable JSON")
 
 	// Intercept --agent --help at any level by overriding HelpFunc.
@@ -73,7 +76,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 		if cmd.Parent() != nil && cmd.Parent().Name() == "auth" {
 			return nil
 		}
-		cfg, err := config.Load("")
+		cfg, err := config.Load(rc.configPath)
 		if err != nil {
 			return err
 		}

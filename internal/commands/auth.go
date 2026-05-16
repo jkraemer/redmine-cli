@@ -26,7 +26,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate via OAuth 2.0 (prints URL, prompts for code)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load("")
+			cfg, err := config.Load(rc.configPath)
 			if err != nil {
 				return err
 			}
@@ -67,7 +67,7 @@ func newAuthLogoutCmd(rc *runCtx) *cobra.Command {
 			// TODO: if Load fails on a half-set-up install (missing URL),
 			// fall back to a path-only resolver so logout still clears
 			// the [token] section without a fully-valid config.
-			cfg, err := config.Load("")
+			cfg, err := config.Load(rc.configPath)
 			if err != nil {
 				return err
 			}
@@ -85,7 +85,7 @@ func newAuthStatusCmd(rc *runCtx) *cobra.Command {
 		Use:   "status",
 		Short: "Show current authentication status",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load("")
+			cfg, err := config.Load(rc.configPath)
 			if err != nil {
 				return err
 			}
