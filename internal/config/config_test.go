@@ -376,3 +376,66 @@ func TestSaveToken_RejectsNil(t *testing.T) {
 		t.Fatal("expected error for nil token")
 	}
 }
+
+func TestDeleteToken_RemovesSection(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url="https://x"
+api_key="k"
+
+[token]
+access_token = "AT"
+token_type = "Bearer"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token == nil {
+		t.Fatal("setup: expected token loaded")
+	}
+	if err := cfg.DeleteToken(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token != nil {
+		t.Errorf("cfg.Token not cleared in memory: %+v", cfg.Token)
+	}
+
+	cfg2, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.Token != nil {
+		t.Errorf("token still on disk: %+v", cfg2.Token)
+	}
+	if cfg2.URL != "https://x" {
+		t.Errorf("URL clobbered: %q", cfg2.URL)
+	}
+	if cfg2.APIKey != "k" {
+		t.Errorf("APIKey clobbered: %q", cfg2.APIKey)
+	}
+}
+
+func TestDeleteToken_NoExistingToken(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url="https://x"`+"\n"+`api_key="k"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.DeleteToken(); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -163,6 +163,24 @@ func (c *Config) SaveToken(tok *auth.Token) error {
 	return nil
 }
 
+// DeleteToken removes the [token] section from the config file at c.Path,
+// preserving all other keys. After a successful write, c.Token is nil.
+func (c *Config) DeleteToken() error {
+	if c.Path == "" {
+		return errors.New("config has no path; cannot delete token")
+	}
+	fc, err := readFileConfig(c.Path)
+	if err != nil {
+		return err
+	}
+	fc.Token = nil
+	if err := writeFileConfig(c.Path, fc); err != nil {
+		return err
+	}
+	c.Token = nil
+	return nil
+}
+
 // readFileConfig parses the TOML file at path into a fileConfig. A missing
 // file is not an error — it yields a zero-valued fileConfig so callers
 // can populate it from scratch.
