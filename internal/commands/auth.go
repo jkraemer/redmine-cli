@@ -64,6 +64,9 @@ func newAuthLogoutCmd(rc *runCtx) *cobra.Command {
 		Use:   "logout",
 		Short: "Remove stored OAuth token",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// TODO: if Load fails on a half-set-up install (missing URL),
+			// fall back to a path-only resolver so logout still clears
+			// the [token] section without a fully-valid config.
 			cfg, err := config.Load("")
 			if err != nil {
 				return err
