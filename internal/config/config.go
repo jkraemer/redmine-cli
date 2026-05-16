@@ -4,6 +4,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -109,6 +110,12 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
+	if cfg.Token == nil && cfg.Path == defaultConfigPath() {
+		if leg := readLegacyToken(); leg != nil {
+			cfg.Token = leg
+		}
+	}
+
 	if cfg.URL == "" {
 		return nil, ErrMissingURL
 	}
@@ -160,6 +167,11 @@ func (c *Config) SaveToken(tok *auth.Token) error {
 		return err
 	}
 	c.Token = tok
+	if c.Path == defaultConfigPath() {
+		if leg := legacyTokenPath(); leg != "" {
+			_ = os.Remove(leg) // best-effort
+		}
+	}
 	return nil
 }
 
@@ -241,6 +253,35 @@ func fromAuthToken(t *auth.Token) *fileToken {
 		ExpiresAt:    t.ExpiresAt,
 		Scope:        t.Scope,
 	}
+}
+
+// legacyTokenPath returns the path to the pre-1.0
+// ~/.config/redmine-cli/token.json, or "" if it can't be resolved.
+func legacyTokenPath() string {
+	d := defaultConfigPath()
+	if d == "" {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(d), "token.json")
+}
+
+// readLegacyToken returns the legacy JSON token, or nil if the file is
+// missing or unparseable. Errors are swallowed deliberately: a corrupt
+// legacy file should not block the new code path.
+func readLegacyToken() *auth.Token {
+	path := legacyTokenPath()
+	if path == "" {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var t auth.Token
+	if err := json.Unmarshal(data, &t); err != nil {
+		return nil
+	}
+	return &t
 }
 
 // AuthMethod returns "oauth" if oauth_client_id is configured, else "apikey".

@@ -454,3 +454,124 @@ func TestDeleteToken_NoExistingToken(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLoad_LegacyTokenReadAtDefaultPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`api_key="k"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"access_token":"AT","refresh_token":"RT","token_type":"Bearer","expires_at":"2030-01-01T00:00:00Z","scope":"view_project"}`
+	if err := os.WriteFile(filepath.Join(cfgDir, "token.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token == nil || cfg.Token.AccessToken != "AT" {
+		t.Errorf("legacy token not loaded: %+v", cfg.Token)
+	}
+	if cfg.Token.Scope != "view_project" {
+		t.Errorf("Scope=%q", cfg.Token.Scope)
+	}
+}
+
+func TestLoad_LegacyTokenIgnoredForCustomPath(t *testing.T) {
+	// A custom --config must not inherit the default-instance's legacy token.
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{"access_token":"AT","token_type":"Bearer"}`
+	if err := os.WriteFile(filepath.Join(cfgDir, "token.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	custom := filepath.Join(t.TempDir(), "alt.toml")
+	if err := os.WriteFile(custom, []byte(`url="https://alt"`+"\n"+`api_key="k"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(custom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token != nil {
+		t.Errorf("custom path must not inherit legacy token, got %+v", cfg.Token)
+	}
+}
+
+func TestSaveToken_RemovesLegacyAtDefaultPath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`oauth_client_id="cid"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(cfgDir, "token.json")
+	if err := os.WriteFile(legacy, []byte(`{"access_token":"old","token_type":"Bearer"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{AccessToken: "new", TokenType: "Bearer"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
+		t.Errorf("legacy token.json not removed: %v", err)
+	}
+}
+
+func TestSaveToken_KeepsLegacyAtCustomPath(t *testing.T) {
+	// A custom --config save must NOT delete the default-instance legacy.
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := filepath.Join(cfgDir, "token.json")
+	if err := os.WriteFile(legacy, []byte(`{"access_token":"keep","token_type":"Bearer"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	custom := filepath.Join(t.TempDir(), "alt.toml")
+	if err := os.WriteFile(custom, []byte(`url="https://alt"`+"\n"+`oauth_client_id="cid"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(custom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{AccessToken: "new", TokenType: "Bearer"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Errorf("legacy must be preserved for custom-config save: %v", err)
+	}
+}
