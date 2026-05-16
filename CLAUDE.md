@@ -36,15 +36,23 @@ else lives under `internal/`:
   sets per-phase timeouts but **no overall body timeout** so streaming
   large attachments to disk isn't capped. Cancellation comes from the
   context.
-- `internal/config/` — loads env vars (highest priority) then
-  `$XDG_CONFIG_HOME/redmine-cli/config.toml`. `AuthMethod()` returns
-  `"oauth"` if `oauth_client_id` is set, else `"apikey"`. Loose perms on
-  the config file surface as a non-fatal warning in `cfg.Warnings`.
+- `internal/config/` — loads env vars (highest priority) then a TOML
+  config file. The path is `--config <path>` (`-c`) if given, otherwise
+  `$XDG_CONFIG_HOME/redmine-cli/config.toml`. `Load` populates
+  `Config.Path` (resolved path) and `Config.Token` (OAuth token from the
+  file's `[token]` section, if any). `AuthMethod()` returns `"oauth"` if
+  `oauth_client_id` is set, else `"apikey"`. Loose perms on the config
+  file surface as a non-fatal warning in `cfg.Warnings`. Token I/O lives
+  here too: `cfg.SaveToken(*auth.Token)` rewrites the file atomically
+  (mode 0600, comments not preserved) and `cfg.DeleteToken()` strips the
+  `[token]` section. On the default config path only, a legacy
+  `~/.config/redmine-cli/token.json` is read transparently on `Load` and
+  removed on the next successful `SaveToken`.
 - `internal/auth/` — OAuth 2.0 authorization-code + PKCE with the OOB
   redirect URI (`urn:ietf:wg:oauth:2.0:oob`). Confidential clients (with
-  `oauth_client_secret`) skip PKCE. Tokens persist at
-  `~/.config/redmine-cli/token.json` mode 0600. Refresh preserves the
-  previously granted scope across refreshes.
+  `oauth_client_secret`) skip PKCE. Refresh preserves the previously
+  granted scope. The `auth.Token` struct and its `Expired()` helper live
+  in `token.go`; token persistence is in `internal/config` (see above).
 - `internal/output/` — JSON (2-space, no HTML escaping) and Markdown
   table rendering. Format chosen by `--format` flag, then config
   `default_format`, then `"json"`.
