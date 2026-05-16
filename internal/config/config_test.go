@@ -369,6 +369,21 @@ func TestSaveToken_CreatesFileIfMissing(t *testing.T) {
 	}
 }
 
+func TestDeleteToken_MissingFileIsNoOp(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "absent.toml")
+	cfg := &Config{Path: p}
+	if err := cfg.DeleteToken(); err != nil {
+		t.Fatalf("DeleteToken on missing file: %v", err)
+	}
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Errorf("DeleteToken should not create the file; stat err=%v", err)
+	}
+	if cfg.Token != nil {
+		t.Errorf("cfg.Token=%+v want nil", cfg.Token)
+	}
+}
+
 func TestSaveToken_RejectsNil(t *testing.T) {
 	dir := t.TempDir()
 	cfg := &Config{Path: filepath.Join(dir, "cfg.toml")}

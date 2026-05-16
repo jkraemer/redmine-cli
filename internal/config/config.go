@@ -165,9 +165,15 @@ func (c *Config) SaveToken(tok *auth.Token) error {
 
 // DeleteToken removes the [token] section from the config file at c.Path,
 // preserving all other keys. After a successful write, c.Token is nil.
+// If the config file does not exist, DeleteToken is a successful no-op —
+// it does not materialize an empty file.
 func (c *Config) DeleteToken() error {
 	if c.Path == "" {
 		return errors.New("config has no path; cannot delete token")
+	}
+	if _, err := os.Stat(c.Path); os.IsNotExist(err) {
+		c.Token = nil
+		return nil
 	}
 	fc, err := readFileConfig(c.Path)
 	if err != nil {
