@@ -7,6 +7,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/jkraemer/redmine-cli/internal/auth"
 )
 
 func TestLoad_EnvOnly(t *testing.T) {
@@ -286,5 +289,82 @@ func TestLoad_NoTokenSection(t *testing.T) {
 	}
 	if cfg.Token != nil {
 		t.Errorf("expected nil Token, got %+v", cfg.Token)
+	}
+}
+
+func TestSaveToken_RoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url = "https://x"
+oauth_client_id = "cid"
+oauth_scopes = ["view_project", "edit_issues"]
+default_format = "markdown"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tok := &auth.Token{
+		AccessToken:  "AT",
+		RefreshToken: "RT",
+		TokenType:    "Bearer",
+		ExpiresAt:    time.Now().Add(time.Hour).UTC().Round(time.Second),
+		Scope:        "view_project",
+	}
+	if err := cfg.SaveToken(tok); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg2, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.Token == nil || cfg2.Token.AccessToken != "AT" {
+		t.Errorf("token not persisted: %+v", cfg2.Token)
+	}
+	if cfg2.Token.RefreshToken != "RT" {
+		t.Errorf("RefreshToken=%q", cfg2.Token.RefreshToken)
+	}
+	if cfg2.URL != "https://x" {
+		t.Errorf("URL clobbered: %q", cfg2.URL)
+	}
+	if cfg2.OAuthClientID != "cid" {
+		t.Errorf("client id clobbered: %q", cfg2.OAuthClientID)
+	}
+	if !reflect.DeepEqual(cfg2.OAuthScopes, []string{"view_project", "edit_issues"}) {
+		t.Errorf("scopes clobbered: %v", cfg2.OAuthScopes)
+	}
+	if cfg2.DefaultFormat != "markdown" {
+		t.Errorf("format clobbered: %q", cfg2.DefaultFormat)
+	}
+
+	info, _ := os.Stat(p)
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("file mode %#o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestSaveToken_CreatesFileIfMissing(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "fresh.toml")
+	// Don't create the file yet — Load with explicit path should fail,
+	// so we construct Config directly for this test.
+	cfg := &Config{Path: p}
+	tok := &auth.Token{AccessToken: "AT", TokenType: "Bearer"}
+	if err := cfg.SaveToken(tok); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		t.Fatalf("file not created: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("file mode %#o, want 0600", info.Mode().Perm())
 	}
 }

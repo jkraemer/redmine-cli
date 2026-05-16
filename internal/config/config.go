@@ -140,6 +140,82 @@ func defaultConfigPath() string {
 	return ""
 }
 
+// SaveToken persists the OAuth token into the [token] section of the
+// config file at c.Path, preserving all other keys. The file is written
+// atomically (temp file + rename) with mode 0600. On success, c.Token is
+// updated to match.
+func (c *Config) SaveToken(tok *auth.Token) error {
+	if c.Path == "" {
+		return errors.New("config has no path; cannot save token")
+	}
+	fc, err := readFileConfig(c.Path)
+	if err != nil {
+		return err
+	}
+	fc.Token = fromAuthToken(tok)
+	if err := writeFileConfig(c.Path, fc); err != nil {
+		return err
+	}
+	c.Token = tok
+	return nil
+}
+
+// readFileConfig parses the TOML file at path into a fileConfig. A missing
+// file is not an error — it yields a zero-valued fileConfig so callers
+// can populate it from scratch.
+func readFileConfig(path string) (*fileConfig, error) {
+	var fc fileConfig
+	if _, err := toml.DecodeFile(path, &fc); err != nil {
+		if os.IsNotExist(err) {
+			return &fc, nil
+		}
+		return nil, err
+	}
+	return &fc, nil
+}
+
+// writeFileConfig atomically writes the fileConfig as TOML to path with
+// mode 0600 by writing to a temp file in the same directory and renaming.
+func writeFileConfig(path string, fc *fileConfig) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, ".cfg-*.toml")
+	if err != nil {
+		return err
+	}
+	enc := toml.NewEncoder(f)
+	if err := enc.Encode(fc); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return err
+	}
+	if err := f.Chmod(0o600); err != nil {
+		f.Close()
+		os.Remove(f.Name())
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(f.Name())
+		return err
+	}
+	return os.Rename(f.Name(), path)
+}
+
+func fromAuthToken(t *auth.Token) *fileToken {
+	if t == nil {
+		return nil
+	}
+	return &fileToken{
+		AccessToken:  t.AccessToken,
+		RefreshToken: t.RefreshToken,
+		TokenType:    t.TokenType,
+		ExpiresAt:    t.ExpiresAt,
+		Scope:        t.Scope,
+	}
+}
+
 // AuthMethod returns "oauth" if oauth_client_id is configured, else "apikey".
 func (c *Config) AuthMethod() string {
 	if c.OAuthClientID != "" {
