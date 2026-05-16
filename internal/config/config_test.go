@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -176,6 +177,7 @@ api_key = "alt-key"
 `), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("REDMINE_URL", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
@@ -192,11 +194,15 @@ api_key = "alt-key"
 }
 
 func TestLoad_ExplicitPathMissing(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("REDMINE_URL", "")
 	t.Setenv("REDMINE_API_KEY", "")
 	_, err := Load("/no/such/file.toml")
 	if err == nil {
 		t.Fatal("expected error for missing explicit path")
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("want ErrNotExist, got %v", err)
 	}
 }
 
