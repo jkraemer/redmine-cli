@@ -38,13 +38,13 @@ type Config struct {
 }
 
 type fileConfig struct {
-	URL               string     `toml:"url"`
-	APIKey            string     `toml:"api_key"`
-	OAuthClientID     string     `toml:"oauth_client_id"`
-	OAuthClientSecret string     `toml:"oauth_client_secret"`
-	OAuthScopes       []string   `toml:"oauth_scopes"`
-	DefaultFormat     string     `toml:"default_format"`
-	Token             *fileToken `toml:"token"`
+	URL               string     `toml:"url,omitempty"`
+	APIKey            string     `toml:"api_key,omitempty"`
+	OAuthClientID     string     `toml:"oauth_client_id,omitempty"`
+	OAuthClientSecret string     `toml:"oauth_client_secret,omitempty"`
+	OAuthScopes       []string   `toml:"oauth_scopes,omitempty"`
+	DefaultFormat     string     `toml:"default_format,omitempty"`
+	Token             *fileToken `toml:"token,omitempty"`
 }
 
 type fileToken struct {

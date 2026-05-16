@@ -350,6 +350,37 @@ default_format = "markdown"
 	}
 }
 
+func TestSaveToken_OmitsEmptyKeysInOutput(t *testing.T) {
+	// After a SaveToken on a sparse config, the file must not gain
+	// noise like oauth_client_id = "" for unset keys.
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url = "https://x"
+api_key = "k"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{AccessToken: "AT", TokenType: "Bearer"}); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, noise := range []string{`oauth_client_id = ""`, `oauth_client_secret = ""`, `default_format = ""`} {
+		if strings.Contains(string(body), noise) {
+			t.Errorf("file contains empty-key noise %q:\n%s", noise, body)
+		}
+	}
+}
+
 func TestSaveToken_CreatesFileIfMissing(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "fresh.toml")
