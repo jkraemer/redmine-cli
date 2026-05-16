@@ -9,8 +9,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/jkraemer/redmine-cli/internal/auth"
 )
 
 // Config holds resolved CLI configuration.
@@ -21,6 +24,9 @@ type Config struct {
 	OAuthClientSecret string
 	OAuthScopes       []string
 	DefaultFormat     string
+	// Token holds OAuth tokens loaded from the config file's [token]
+	// section. Nil if no token is stored.
+	Token *auth.Token
 	// Path is the resolved config file path (explicit or default). May be
 	// empty if no path could be resolved. The file may or may not exist.
 	Path string
@@ -31,12 +37,21 @@ type Config struct {
 }
 
 type fileConfig struct {
-	URL               string   `toml:"url"`
-	APIKey            string   `toml:"api_key"`
-	OAuthClientID     string   `toml:"oauth_client_id"`
-	OAuthClientSecret string   `toml:"oauth_client_secret"`
-	OAuthScopes       []string `toml:"oauth_scopes"`
-	DefaultFormat     string   `toml:"default_format"`
+	URL               string     `toml:"url"`
+	APIKey            string     `toml:"api_key"`
+	OAuthClientID     string     `toml:"oauth_client_id"`
+	OAuthClientSecret string     `toml:"oauth_client_secret"`
+	OAuthScopes       []string   `toml:"oauth_scopes"`
+	DefaultFormat     string     `toml:"default_format"`
+	Token             *fileToken `toml:"token"`
+}
+
+type fileToken struct {
+	AccessToken  string    `toml:"access_token"`
+	RefreshToken string    `toml:"refresh_token,omitempty"`
+	TokenType    string    `toml:"token_type"`
+	ExpiresAt    time.Time `toml:"expires_at,omitzero"`
+	Scope        string    `toml:"scope,omitempty"`
 }
 
 // ErrMissingURL is returned when no URL can be resolved.
@@ -83,6 +98,16 @@ func Load(path string) (*Config, error) {
 	cfg.OAuthClientSecret = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_SECRET"), fc.OAuthClientSecret)
 	cfg.OAuthScopes = resolveScopes(os.Getenv("REDMINE_OAUTH_SCOPES"), fc.OAuthScopes)
 	cfg.DefaultFormat = firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json")
+
+	if fc.Token != nil && fc.Token.AccessToken != "" {
+		cfg.Token = &auth.Token{
+			AccessToken:  fc.Token.AccessToken,
+			RefreshToken: fc.Token.RefreshToken,
+			TokenType:    fc.Token.TokenType,
+			ExpiresAt:    fc.Token.ExpiresAt,
+			Scope:        fc.Token.Scope,
+		}
+	}
 
 	if cfg.URL == "" {
 		return nil, ErrMissingURL

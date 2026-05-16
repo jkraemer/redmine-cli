@@ -226,3 +226,59 @@ func TestLoad_OAuthScopesEnvOverridesTOML(t *testing.T) {
 		t.Errorf("OAuthScopes=%v want %v", cfg.OAuthScopes, want)
 	}
 }
+
+func TestLoad_ParsesTokenSection(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	contents := `url = "https://x"
+oauth_client_id = "cid"
+
+[token]
+access_token = "AT"
+refresh_token = "RT"
+token_type = "Bearer"
+expires_at = 2030-01-01T00:00:00Z
+scope = "view_project edit_issues"
+`
+	if err := os.WriteFile(p, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token == nil {
+		t.Fatal("Token nil")
+	}
+	if cfg.Token.AccessToken != "AT" {
+		t.Errorf("AccessToken=%q", cfg.Token.AccessToken)
+	}
+	if cfg.Token.Scope != "view_project edit_issues" {
+		t.Errorf("Scope=%q", cfg.Token.Scope)
+	}
+	if cfg.Token.ExpiresAt.Year() != 2030 {
+		t.Errorf("ExpiresAt=%v", cfg.Token.ExpiresAt)
+	}
+}
+
+func TestLoad_NoTokenSection(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url="https://x"`+"\n"+`api_key="k"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Token != nil {
+		t.Errorf("expected nil Token, got %+v", cfg.Token)
+	}
+}
