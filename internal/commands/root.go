@@ -50,7 +50,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 
 	root.PersistentFlags().StringVarP(&rc.format, "format", "f", "", "Output format: json or markdown (default from config)")
 	root.PersistentFlags().StringVarP(&rc.configPath, "config", "c", "",
-		"Path to config file (default: $XDG_CONFIG_HOME/redmine-cli/config.toml)")
+		"Path to config file")
 	root.PersistentFlags().BoolVar(&rc.agentHelp, "agent", false, "When combined with --help, emit machine-readable JSON")
 
 	// Intercept --agent --help at any level by overriding HelpFunc.
