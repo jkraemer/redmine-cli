@@ -257,6 +257,12 @@ scope = "view_project edit_issues"
 	if cfg.Token.AccessToken != "AT" {
 		t.Errorf("AccessToken=%q", cfg.Token.AccessToken)
 	}
+	if cfg.Token.RefreshToken != "RT" {
+		t.Errorf("RefreshToken=%q", cfg.Token.RefreshToken)
+	}
+	if cfg.Token.TokenType != "Bearer" {
+		t.Errorf("TokenType=%q", cfg.Token.TokenType)
+	}
 	if cfg.Token.Scope != "view_project edit_issues" {
 		t.Errorf("Scope=%q", cfg.Token.Scope)
 	}

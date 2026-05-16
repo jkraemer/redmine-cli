@@ -50,7 +50,7 @@ type fileToken struct {
 	AccessToken  string    `toml:"access_token"`
 	RefreshToken string    `toml:"refresh_token,omitempty"`
 	TokenType    string    `toml:"token_type"`
-	ExpiresAt    time.Time `toml:"expires_at,omitzero"`
+	ExpiresAt    time.Time `toml:"expires_at,omitempty"`
 	Scope        string    `toml:"scope,omitempty"`
 }
 
