@@ -206,8 +206,17 @@ Or via env: `REDMINE_OAUTH_CLIENT_ID`, `REDMINE_OAUTH_CLIENT_SECRET`,
 `REDMINE_OAUTH_SCOPES` (space-separated).
 
 Then run `redmine-cli auth login`. `auth status` shows the granted scope
-and is preserved across token refreshes. See README for the full list of
-known Planio scopes and the admin workaround for older Redmines.
+and is preserved across token refreshes. The OAuth token is stored in
+the same TOML file under a `[token]` section. See README for the full
+list of known Planio scopes and the admin workaround for older Redmines.
+
+### Multiple instances
+
+Pass `--config <path>` (`-c`) on any command to select a different
+config file. Each file is self-contained (URL, credentials, token) so
+tokens never leak between instances:
+
+    redmine-cli --config ~/.config/redmine-cli/projA.toml issues list --project foo
 
 ## Exit Codes
 

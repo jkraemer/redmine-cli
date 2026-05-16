@@ -26,7 +26,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate via OAuth 2.0 (prints URL, prompts for code)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load()
+			cfg, err := config.Load(rc.configPath)
 			if err != nil {
 				return err
 			}
@@ -50,7 +50,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("token exchange: %w", err)
 			}
-			if err := auth.SaveToken(tok); err != nil {
+			if err := cfg.SaveToken(tok); err != nil {
 				return err
 			}
 			fmt.Fprintln(rc.out, "Authenticated successfully. Token saved.")
@@ -64,7 +64,14 @@ func newAuthLogoutCmd(rc *runCtx) *cobra.Command {
 		Use:   "logout",
 		Short: "Remove stored OAuth token",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := auth.DeleteToken(); err != nil {
+			// TODO: if Load fails on a half-set-up install (missing URL),
+			// fall back to a path-only resolver so logout still clears
+			// the [token] section without a fully-valid config.
+			cfg, err := config.Load(rc.configPath)
+			if err != nil {
+				return err
+			}
+			if err := cfg.DeleteToken(); err != nil {
 				return err
 			}
 			fmt.Fprintln(rc.out, "Logged out.")
@@ -78,15 +85,12 @@ func newAuthStatusCmd(rc *runCtx) *cobra.Command {
 		Use:   "status",
 		Short: "Show current authentication status",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load()
+			cfg, err := config.Load(rc.configPath)
 			if err != nil {
 				return err
 			}
 			if cfg.AuthMethod() == "oauth" {
-				tok, err := auth.LoadToken()
-				if err != nil {
-					return err
-				}
+				tok := cfg.Token
 				if tok == nil {
 					fmt.Fprintln(rc.out, "Auth method: oauth\nStatus:      not logged in (run: redmine-cli auth login)")
 					return nil

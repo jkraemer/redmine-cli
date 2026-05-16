@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -26,43 +24,6 @@ func TestPKCE(t *testing.T) {
 	}
 	if c == v {
 		t.Error("challenge must differ from verifier")
-	}
-}
-
-func TestTokenRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "cfg"))
-
-	tok := &Token{
-		AccessToken:  "abc",
-		RefreshToken: "def",
-		TokenType:    "Bearer",
-		ExpiresAt:    time.Now().Add(time.Hour).Round(time.Second),
-	}
-	if err := SaveToken(tok); err != nil {
-		t.Fatal(err)
-	}
-	path, _ := TokenPath()
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("want mode 0600, got %o", info.Mode().Perm())
-	}
-	got, err := LoadToken()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.AccessToken != tok.AccessToken || got.RefreshToken != tok.RefreshToken {
-		t.Errorf("round-trip mismatch: %+v", got)
-	}
-	if err := DeleteToken(); err != nil {
-		t.Fatal(err)
-	}
-	got, err = LoadToken()
-	if err != nil || got != nil {
-		t.Errorf("expected nil after delete, got %v %v", got, err)
 	}
 }
 

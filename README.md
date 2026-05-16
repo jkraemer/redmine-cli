@@ -69,8 +69,11 @@ identically in both modes.
 
 This will print an authorization URL. Open it in your browser, approve the
 application, and copy the authorization code shown by Redmine. Paste it at
-the prompt. The token is stored in `~/.config/redmine-cli/token.json`
-(mode 0600) and refreshed automatically.
+the prompt. The token is stored inside the config file itself, under a
+`[token]` section (mode 0600), and refreshed automatically. Existing
+installations that still have a `~/.config/redmine-cli/token.json` from
+an earlier version are migrated transparently on the next read or refresh —
+no need to re-authenticate.
 
     redmine-cli auth status   # check current auth method, expiry, granted scope
     redmine-cli auth logout   # revoke and remove stored token
@@ -135,9 +138,30 @@ as a starting point when you configure `oauth_scopes` (see #1469):
 This list is for local reference only — different Redmine/Planio versions
 may expose different scopes.
 
+### Multiple instances / config files
+
+To run `redmine-cli` against more than one Redmine instance, pass
+`--config <path>` (`-c`) on any command:
+
+    redmine-cli --config ~/.config/redmine-cli/projA.toml issues list --project foo
+    redmine-cli -c ~/.config/redmine-cli/projB.toml issues list --project bar
+
+Each config file holds its own URL, credentials, and — for OAuth — its
+own `[token]` section. Tokens are isolated per file: a custom config
+never reads or writes the default instance's token, and vice versa.
+
+Note that token refreshes rewrite the TOML file, and the encoder does
+**not** preserve comments. Don't put hand-written annotations you care
+about into a config file the CLI will write to.
+
+When `--config` is omitted, the default
+`$XDG_CONFIG_HOME/redmine-cli/config.toml` (falling back to
+`~/.config/redmine-cli/config.toml`) is used.
+
 ## Use
 
     ./redmine-cli projects list
+    ./redmine-cli --config ~/.config/redmine-cli/projA.toml projects list
     ./redmine-cli issues list --project myproj --status open --limit 10
     ./redmine-cli issues get 1459
     ./redmine-cli issues create --project myproj --tracker 1 --subject "Bug" --attach screenshot.png --confirm

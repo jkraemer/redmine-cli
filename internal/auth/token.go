@@ -1,11 +1,6 @@
 package auth
 
-import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"time"
-)
+import "time"
 
 // Token holds the stored OAuth token.
 type Token struct {
@@ -24,65 +19,4 @@ func (t *Token) Expired() bool {
 		return false
 	}
 	return time.Now().Add(30 * time.Second).After(t.ExpiresAt)
-}
-
-// TokenPath returns the path to the token file.
-func TokenPath() (string, error) {
-	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" {
-		return filepath.Join(base, "redmine-cli", "token.json"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(home, ".config", "redmine-cli", "token.json"), nil
-}
-
-// LoadToken reads the stored token from disk. Returns nil, nil if no token exists.
-func LoadToken() (*Token, error) {
-	path, err := TokenPath()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var t Token
-	if err := json.Unmarshal(data, &t); err != nil {
-		return nil, err
-	}
-	return &t, nil
-}
-
-// SaveToken writes the token to disk with mode 0600.
-func SaveToken(t *Token) error {
-	path, err := TokenPath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(t, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0600)
-}
-
-// DeleteToken removes the token file. Returns nil if the file does not exist.
-func DeleteToken() error {
-	path, err := TokenPath()
-	if err != nil {
-		return err
-	}
-	err = os.Remove(path)
-	if os.IsNotExist(err) {
-		return nil
-	}
-	return err
 }

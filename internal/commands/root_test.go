@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +16,7 @@ import (
 
 	"github.com/jkraemer/redmine-cli/internal/api"
 	"github.com/jkraemer/redmine-cli/internal/auth"
+	"github.com/jkraemer/redmine-cli/internal/config"
 )
 
 // buildRootForTest returns a minimal root command with the runCtx pre-populated.
@@ -105,17 +108,28 @@ func TestRunCtx_CancelsInFlightHTTP(t *testing.T) {
 func TestAuthStatus_ShowsScope(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("REDMINE_URL", "https://x")
-	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "cid")
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`oauth_client_id="cid"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
-	tok := &auth.Token{
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{
 		AccessToken: "AT",
 		TokenType:   "Bearer",
 		ExpiresAt:   time.Now().Add(time.Hour),
 		Scope:       "view_project edit_issues",
-	}
-	if err := auth.SaveToken(tok); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,16 +147,27 @@ func TestAuthStatus_ShowsScope(t *testing.T) {
 func TestAuthStatus_ShowsNoneWhenScopeMissing(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("REDMINE_URL", "https://x")
-	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "cid")
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`oauth_client_id="cid"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
 	t.Setenv("REDMINE_API_KEY", "")
 
-	tok := &auth.Token{
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{
 		AccessToken: "AT",
 		TokenType:   "Bearer",
 		ExpiresAt:   time.Now().Add(time.Hour),
-	}
-	if err := auth.SaveToken(tok); err != nil {
+	}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -154,6 +179,44 @@ func TestAuthStatus_ShowsNoneWhenScopeMissing(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "(none reported)") {
 		t.Errorf("status output should mention '(none reported)': %s", out.String())
+	}
+}
+
+func TestConfigFlag_PicksAlternatePath(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // hermetic: no default config exists
+	altPath := filepath.Join(dir, "alt.toml")
+	if err := os.WriteFile(altPath, []byte(`url = "https://alt.example"
+oauth_client_id = "cid"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	// Seed a token via the alt-config path so auth status has something to show.
+	cfg, err := config.Load(altPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{
+		AccessToken: "AT",
+		TokenType:   "Bearer",
+		ExpiresAt:   time.Now().Add(time.Hour),
+		Scope:       "view_project",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	root := Build(context.Background(), &out, &bytes.Buffer{})
+	root.SetArgs([]string{"--config", altPath, "auth", "status"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out.String(), "view_project") {
+		t.Errorf("--config did not select alt file; output: %s", out.String())
 	}
 }
 
