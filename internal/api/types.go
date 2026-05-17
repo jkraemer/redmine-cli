@@ -127,6 +127,7 @@ type ListIssuesParams struct {
 	Offset     int
 	Sort       string
 	Include    []string // attachments, relations
+	QueryID    int      // 0 means unset; emitted as ?query_id=N when > 0
 }
 
 // ListIssuesResult holds the listing payload.

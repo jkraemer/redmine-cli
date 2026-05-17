@@ -770,3 +770,35 @@ func TestListQueries_SendsPaginationAndDecodes(t *testing.T) {
 	}
 }
 
+func TestListIssues_SendsQueryIDWhenSet(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if _, err := c.ListIssues(context.Background(), ListIssuesParams{QueryID: 42}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotURL, "query_id=42") {
+		t.Errorf("URL missing query_id=42: %s", gotURL)
+	}
+}
+
+func TestListIssues_OmitsQueryIDWhenZero(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if _, err := c.ListIssues(context.Background(), ListIssuesParams{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(gotURL, "query_id") {
+		t.Errorf("URL should not contain query_id when unset: %s", gotURL)
+	}
+}
+

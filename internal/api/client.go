@@ -283,6 +283,9 @@ func (c *Client) ListIssues(ctx context.Context, p ListIssuesParams) (*ListIssue
 	if p.Offset > 0 {
 		q.Set("offset", strconv.Itoa(p.Offset))
 	}
+	if p.QueryID > 0 {
+		q.Set("query_id", strconv.Itoa(p.QueryID))
+	}
 	var res ListIssuesResult
 	if err := c.doJSON(ctx, "/issues.json", q, &res); err != nil {
 		return nil, err
