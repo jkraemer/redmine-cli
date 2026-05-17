@@ -64,6 +64,26 @@ func TestQueriesList_Markdown_BlankProjectIDForGlobal(t *testing.T) {
 	if !strings.Contains(s, "All open") || !strings.Contains(s, "Bugs") {
 		t.Errorf("missing rows:\n%s", s)
 	}
+	// Verify the Project ID cell is blank for the global query and "7" for the
+	// project-scoped one. Cells are pipe-delimited; the Project ID is the
+	// fourth data cell (after the leading "|").
+	for _, line := range strings.Split(s, "\n") {
+		if !strings.Contains(line, "All open") && !strings.Contains(line, "Bugs") {
+			continue
+		}
+		cells := strings.Split(strings.Trim(line, "|"), "|")
+		if len(cells) < 4 {
+			t.Errorf("row has fewer than 4 cells: %q", line)
+			continue
+		}
+		pid := strings.TrimSpace(cells[3])
+		switch {
+		case strings.Contains(line, "All open") && pid != "":
+			t.Errorf("global query row should have blank Project ID, got %q in %q", pid, line)
+		case strings.Contains(line, "Bugs") && pid != "7":
+			t.Errorf("project-scoped row should have Project ID=7, got %q in %q", pid, line)
+		}
+	}
 }
 
 func TestQueriesList_All_PaginatesAcrossPages(t *testing.T) {
