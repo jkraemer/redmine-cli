@@ -235,6 +235,27 @@ func (c *Client) ListProjects(ctx context.Context, p ListProjectsParams) (*ListP
 	}, nil
 }
 
+// ListQueries lists saved queries via /queries.json.
+func (c *Client) ListQueries(ctx context.Context, p ListQueriesParams) (*ListQueriesResult, error) {
+	q := url.Values{}
+	if p.Limit > 0 {
+		q.Set("limit", strconv.Itoa(p.Limit))
+	}
+	if p.Offset > 0 {
+		q.Set("offset", strconv.Itoa(p.Offset))
+	}
+	var raw listQueriesResponse
+	if err := c.doJSON(ctx, "/queries.json", q, &raw); err != nil {
+		return nil, err
+	}
+	return &ListQueriesResult{
+		Queries:    raw.Queries,
+		TotalCount: raw.TotalCount,
+		Offset:     raw.Offset,
+		Limit:      raw.Limit,
+	}, nil
+}
+
 // ListIssues lists issues with the given filter params.
 func (c *Client) ListIssues(ctx context.Context, p ListIssuesParams) (*ListIssuesResult, error) {
 	q := url.Values{}
@@ -261,6 +282,9 @@ func (c *Client) ListIssues(ctx context.Context, p ListIssuesParams) (*ListIssue
 	}
 	if p.Offset > 0 {
 		q.Set("offset", strconv.Itoa(p.Offset))
+	}
+	if p.QueryID > 0 {
+		q.Set("query_id", strconv.Itoa(p.QueryID))
 	}
 	var res ListIssuesResult
 	if err := c.doJSON(ctx, "/issues.json", q, &res); err != nil {

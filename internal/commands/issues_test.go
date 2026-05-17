@@ -1091,3 +1091,41 @@ func TestIssuesUpdate_Attach_MidBatchUploadFailure(t *testing.T) {
 		t.Errorf("update calls=%d, want 0", got)
 	}
 }
+
+func TestIssuesList_QueryIDFlag_ForwardsToServer(t *testing.T) {
+	var gotURL string
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "list", "--query-id", "42"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotURL, "query_id=42") {
+		t.Errorf("URL missing query_id=42: %s", gotURL)
+	}
+}
+
+func TestIssuesList_NoQueryID_OmitsParam(t *testing.T) {
+	var gotURL string
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "list"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(gotURL, "query_id") {
+		t.Errorf("URL should not include query_id when flag absent: %s", gotURL)
+	}
+}

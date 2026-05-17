@@ -120,6 +120,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTimeActivitiesCmd(rc))
 	root.AddCommand(newSearchCmd(rc))
 	root.AddCommand(newWikiCmd(rc))
+	root.AddCommand(newQueriesCmd(rc))
 	root.AddCommand(newAuthCmd(rc))
 
 	return root

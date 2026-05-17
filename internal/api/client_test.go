@@ -735,3 +735,69 @@ func TestLogTime_WrapsAndUnwraps(t *testing.T) {
 		t.Errorf("decoded time entry wrong: %+v", got)
 	}
 }
+
+func TestListQueries_SendsPaginationAndDecodes(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"queries":[{"id":7,"name":"My open","is_public":false,"project_id":null},{"id":9,"name":"Bugs","is_public":true,"project_id":3}],"total_count":2,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k", srv.Client())
+	res, err := c.ListQueries(context.Background(), ListQueriesParams{Limit: 25, Offset: 0})
+	if err != nil {
+		t.Fatalf("ListQueries: %v", err)
+	}
+	if !strings.Contains(gotURL, "/queries.json") {
+		t.Errorf("URL did not include /queries.json: %s", gotURL)
+	}
+	if !strings.Contains(gotURL, "limit=25") {
+		t.Errorf("URL missing limit=25: %s", gotURL)
+	}
+	if len(res.Queries) != 2 {
+		t.Fatalf("expected 2 queries, got %d", len(res.Queries))
+	}
+	if res.Queries[0].ProjectID != nil {
+		t.Errorf("expected nil ProjectID for global query, got %v", *res.Queries[0].ProjectID)
+	}
+	if res.Queries[1].ProjectID == nil || *res.Queries[1].ProjectID != 3 {
+		t.Errorf("expected ProjectID=3 for second query")
+	}
+	if res.TotalCount != 2 {
+		t.Errorf("TotalCount=%d, want 2", res.TotalCount)
+	}
+}
+
+func TestListIssues_SendsQueryIDWhenSet(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if _, err := c.ListIssues(context.Background(), ListIssuesParams{QueryID: 42}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(gotURL, "query_id=42") {
+		t.Errorf("URL missing query_id=42: %s", gotURL)
+	}
+}
+
+func TestListIssues_OmitsQueryIDWhenZero(t *testing.T) {
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if _, err := c.ListIssues(context.Background(), ListIssuesParams{}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(gotURL, "query_id") {
+		t.Errorf("URL should not contain query_id when unset: %s", gotURL)
+	}
+}

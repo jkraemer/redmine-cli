@@ -108,6 +108,8 @@ Notes:
 | List recent issues in a project | `redmine-cli issues list --project myproj --updated-since 2026-04-01` |
 | List ALL issues in a project | `redmine-cli issues list --project myproj --status '*' --all` |
 | List with extras | `redmine-cli issues list --project myproj --include attachments,relations` |
+| List saved queries | `redmine-cli queries list` |
+| Run a saved query | `redmine-cli issues list --query-id 42 --all` |
 | Get full issue with journals | `redmine-cli issues get 1459 --include journals,attachments` |
 | Download attachment | `redmine-cli attachments download 42` |
 | Save attachment to a path | `redmine-cli attachments download 42 -o /tmp/foo.png` |
@@ -179,7 +181,7 @@ exit code 1 and the raw error message.
 
 ## --all auto-pagination
 
-Available on `issues list`, `projects list`, `users list`, and `search`.
+Available on `issues list`, `projects list`, `users list`, `queries list`, and `search`.
 When set:
 
 - Internally fetches in pages of 100 until exhausted.
