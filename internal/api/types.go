@@ -24,6 +24,36 @@ type ListProjectsResult struct {
 	Limit      int       `json:"limit"`
 }
 
+// Query is a Redmine saved query (subset returned by /queries.json).
+// ProjectID is nil for global queries and an integer for project-scoped queries.
+type Query struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	IsPublic  bool   `json:"is_public"`
+	ProjectID *int   `json:"project_id"`
+}
+
+type listQueriesResponse struct {
+	Queries    []Query `json:"queries"`
+	TotalCount int     `json:"total_count"`
+	Offset     int     `json:"offset"`
+	Limit      int     `json:"limit"`
+}
+
+// ListQueriesParams holds query params for /queries.json.
+type ListQueriesParams struct {
+	Limit  int
+	Offset int
+}
+
+// ListQueriesResult is what we return to callers.
+type ListQueriesResult struct {
+	Queries    []Query `json:"queries"`
+	TotalCount int     `json:"total_count"`
+	Offset     int     `json:"offset"`
+	Limit      int     `json:"limit"`
+}
+
 // IDName is a common shape for nested {id,name} fields in Redmine.
 type IDName struct {
 	ID   int    `json:"id"`
