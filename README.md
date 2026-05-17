@@ -93,7 +93,7 @@ Or via the environment (space-separated, RFC 6749 §3.3):
 
 `redmine-cli` will join them and send `scope=<space-separated>` on the
 authorization request. The granted scope shows up in `auth status` and is
-preserved across token refreshes. See "Reference: Planio OAuth scopes"
+preserved across token refreshes. See "Reference: Common OAuth scopes"
 below for known values.
 
 #### Granting full scopes (admin workaround)
@@ -116,10 +116,11 @@ permitted scope set instead:
 The resulting token will carry the full scope set, and refresh tokens will
 preserve it.
 
-#### Reference: Planio OAuth scopes
+#### Reference: Common OAuth scopes
 
-For convenience, the scopes a recent Planio installation supports — useful
-as a starting point when you configure `oauth_scopes` (see #1469):
+For convenience, a set of scopes commonly supported by recent Redmine
+installations — useful as a starting point when you configure
+`oauth_scopes` (see #1469):
 
 - `view_project`
 - `search_project`
@@ -135,7 +136,7 @@ as a starting point when you configure `oauth_scopes` (see #1469):
 - `view_time_entries`
 - `log_time`
 
-This list is for local reference only — different Redmine/Planio versions
+This list is for local reference only — different Redmine versions
 may expose different scopes.
 
 ### Multiple instances / config files

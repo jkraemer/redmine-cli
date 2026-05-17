@@ -1,13 +1,12 @@
 ---
 name: redmine-cli
 description: |
-  Interact with Redmine/Planio via the redmine-cli binary. Covers read,
+  Interact with Redmine via the redmine-cli binary. Covers read,
   write, lookups, search, and time logging. Use for ANY Redmine question
   or action.
 triggers:
   - redmine
   - /redmine
-  - planio
   - redmine issue
   - redmine project
   - redmine attachment
@@ -27,8 +26,17 @@ argument-hint: "[action] [args...]"
 
 # /redmine - Redmine CLI Workflow
 
-Read, write, search, lookups, time tracking, OAuth. Planio extras and
-packaging tracked in #1462.
+Read, write, search, lookups, time tracking, OAuth. Packaging and
+distribution tracked in #1462.
+
+## Binary location
+
+The `redmine-cli` binary ships alongside this SKILL.md. Invoke it via
+its full path — it is **not** assumed to be on `$PATH`. The default
+install location is `~/.claude/skills/redmine-cli/redmine-cli`; if you
+placed the skill folder elsewhere, use that path instead. All example
+commands below say `redmine-cli` for brevity — substitute the full
+binary path when actually running them.
 
 ## Agent Invariants
 
@@ -207,8 +215,8 @@ Or via env: `REDMINE_OAUTH_CLIENT_ID`, `REDMINE_OAUTH_CLIENT_SECRET`,
 
 Then run `redmine-cli auth login`. `auth status` shows the granted scope
 and is preserved across token refreshes. The OAuth token is stored in
-the same TOML file under a `[token]` section. See README for the full
-list of known Planio scopes and the admin workaround for older Redmines.
+the same TOML file under a `[token]` section. See README for a list
+of common scopes and the admin workaround for older Redmines.
 
 ### Multiple instances
 
@@ -233,6 +241,6 @@ tokens never leak between instances:
 
 ## Out of Scope (in flight)
 
-- Planio Help Desk endpoints, packaging, distribution — #1462
+- Packaging, distribution — #1462
 
 Watchers and file uploads on create/update are not yet implemented.
