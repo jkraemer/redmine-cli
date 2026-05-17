@@ -70,7 +70,7 @@ func newIssuesCmd(rc *runCtx) *cobra.Command {
 func newIssuesListCmd(rc *runCtx) *cobra.Command {
 	var (
 		project, status, assignee, updatedSince, sort string
-		limit, offset                                 int
+		limit, offset, queryID                        int
 		all                                           bool
 		includes                                      []string
 	)
@@ -90,6 +90,7 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 				Limit:      limit,
 				Offset:     offset,
 				Include:    includes,
+				QueryID:    queryID,
 			}
 			if updatedSince != "" {
 				p.UpdatedOn = ">=" + updatedSince
@@ -131,6 +132,7 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().IntVar(&offset, "offset", 0, "Pagination offset")
 	cmd.Flags().BoolVar(&all, "all", false, "Fetch all pages (ignores --limit/--offset; capped at 1000 results)")
 	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: attachments, relations")
+	cmd.Flags().IntVar(&queryID, "query-id", 0, "Apply saved query ID; other filters are ignored by the server when set")
 	return cmd
 }
 
