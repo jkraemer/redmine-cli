@@ -801,4 +801,3 @@ func TestListIssues_OmitsQueryIDWhenZero(t *testing.T) {
 		t.Errorf("URL should not contain query_id when unset: %s", gotURL)
 	}
 }
-
