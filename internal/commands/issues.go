@@ -408,6 +408,16 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 				fmt.Fprintf(&b, "**%s** (%s):\n%s\n\n", j.User.Name, j.CreatedOn, j.Notes)
 			}
 		}
+		if len(is.Attachments) > 0 {
+			fmt.Fprintf(&b, "\n## Attachments\n\n")
+			for _, a := range is.Attachments {
+				fmt.Fprintf(&b, "- **#%d** %s", a.ID, a.Filename)
+				if a.Description != "" {
+					fmt.Fprintf(&b, " — %s", a.Description)
+				}
+				fmt.Fprintf(&b, " (%s)\n", a.ContentURL)
+			}
+		}
 		_, err := fmt.Fprint(rc.out, b.String())
 		return err
 	}

@@ -278,6 +278,54 @@ func TestIssuesGet_Markdown(t *testing.T) {
 	}
 }
 
+func TestIssuesGet_Markdown_Attachments(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"issue":{"id":7,"subject":"Subj","description":"Body","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"},"attachments":[{"id":42,"filename":"diagram.png","filesize":2048,"content_type":"image/png","content_url":"https://example.test/attachments/download/42/diagram.png","description":"architecture sketch","author":{"id":1,"name":"A"},"created_on":"2026-05-01T12:00:00Z"},{"id":43,"filename":"notes.txt","filesize":12,"content_url":"https://example.test/attachments/download/43/notes.txt","author":{"id":1,"name":"A"},"created_on":"2026-05-02T12:00:00Z"}]}}`))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7", "--include", "attachments"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"## Attachments",
+		"diagram.png",
+		"architecture sketch",
+		"https://example.test/attachments/download/42/diagram.png",
+		"notes.txt",
+		"https://example.test/attachments/download/43/notes.txt",
+		"42",
+		"43",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("markdown missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestIssuesGet_Markdown_NoAttachmentsSection_WhenEmpty(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"issue":{"id":7,"subject":"Subj","description":"Body","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"}}}`))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "## Attachments") {
+		t.Errorf("attachments section should be omitted when none present:\n%s", out.String())
+	}
+}
+
 func TestIssuesUpdate_NotesFile_DryRun(t *testing.T) {
 	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("server should not be called in dry-run mode")
