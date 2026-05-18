@@ -91,6 +91,138 @@ func TestDo_DoesNotRetry429WithExcessiveRetryAfter(t *testing.T) {
 	}
 }
 
+// A malicious or compromised Redmine server that returns a 3xx redirect to a
+// different host must not be followed: Go's stdlib only strips a fixed list of
+// auth headers (Authorization, Cookie, ...) on cross-host redirects and has no
+// knowledge of X-Redmine-API-Key, so a redirect to attacker.example would
+// exfiltrate the API key. DefaultHTTPClient's CheckRedirect must refuse the
+// hop.
+func TestDefaultHTTPClient_RefusesCrossHostRedirect_APIKey(t *testing.T) {
+	var attackerCalls int32
+	var attackerKey string
+	attackerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attackerCalls, 1)
+		attackerKey = r.Header.Get("X-Redmine-API-Key")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"projects":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer attackerSrv.Close()
+
+	redmineSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, attackerSrv.URL+"/projects.json", http.StatusFound)
+	}))
+	defer redmineSrv.Close()
+
+	c := New(redmineSrv.URL, "test-key", DefaultHTTPClient())
+	_, err := c.ListProjects(context.Background(), ListProjectsParams{})
+	if err == nil {
+		t.Fatalf("expected cross-host redirect to be refused")
+	}
+	if got := atomic.LoadInt32(&attackerCalls); got != 0 {
+		t.Errorf("attacker host received %d request(s); expected 0", got)
+	}
+	if attackerKey != "" {
+		t.Errorf("API key leaked off-host: %q", attackerKey)
+	}
+}
+
+// Same guarantee on the OAuth Bearer code path. Go's stdlib strips
+// "Authorization" on cross-host redirects, but we still refuse the hop so an
+// attacker can't observe that a redirect to their host even occurred (and to
+// keep behavior consistent between the two auth modes).
+func TestDefaultHTTPClient_RefusesCrossHostRedirect_Bearer(t *testing.T) {
+	var attackerCalls int32
+	var attackerAuth string
+	attackerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attackerCalls, 1)
+		attackerAuth = r.Header.Get("Authorization")
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"projects":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer attackerSrv.Close()
+
+	redmineSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, attackerSrv.URL+"/projects.json", http.StatusFound)
+	}))
+	defer redmineSrv.Close()
+
+	c := NewWithToken(redmineSrv.URL, "bearer-xyz", DefaultHTTPClient())
+	_, err := c.ListProjects(context.Background(), ListProjectsParams{})
+	if err == nil {
+		t.Fatalf("expected cross-host redirect to be refused")
+	}
+	if got := atomic.LoadInt32(&attackerCalls); got != 0 {
+		t.Errorf("attacker host received %d request(s); expected 0", got)
+	}
+	if attackerAuth != "" {
+		t.Errorf("Authorization leaked off-host: %q", attackerAuth)
+	}
+}
+
+// Same-host redirects (e.g. /old -> /new on the same Redmine) must still be
+// followed; we don't want to break legitimate server-side URL canonicalization.
+func TestDefaultHTTPClient_FollowsSameHostRedirect(t *testing.T) {
+	var hits int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&hits, 1)
+		if n == 1 {
+			http.Redirect(w, r, "/projects.json?v=2", http.StatusFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"projects":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", DefaultHTTPClient())
+	if _, err := c.ListProjects(context.Background(), ListProjectsParams{}); err != nil {
+		t.Fatalf("same-host redirect should be followed: %v", err)
+	}
+	if got := atomic.LoadInt32(&hits); got != 2 {
+		t.Errorf("expected 2 hits (initial + follow), got %d", got)
+	}
+}
+
+// Attachment downloads route through the same client; cross-host redirects on
+// the content_url fetch (separate from the assertSameOrigin URL-string check)
+// must also be refused so the key can't leak via that path.
+func TestDefaultHTTPClient_RefusesCrossHostRedirect_OnAttachment(t *testing.T) {
+	var attackerCalls int32
+	var attackerKey string
+	attackerSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attackerCalls, 1)
+		attackerKey = r.Header.Get("X-Redmine-API-Key")
+		_, _ = w.Write([]byte("evil-bytes"))
+	}))
+	defer attackerSrv.Close()
+
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".json") {
+			w.Header().Set("Content-Type", "application/json")
+			body := `{"attachment":{"id":42,"filename":"hi.txt","content_url":"` + srv.URL + `/file"}}`
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		// Same-origin content_url then redirects off-host. assertSameOrigin
+		// passes (URL string is same-origin); the redirect is what must catch
+		// this.
+		http.Redirect(w, r, attackerSrv.URL+"/file", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", DefaultHTTPClient())
+	if _, _, err := c.GetAttachment(context.Background(), 42); err == nil {
+		t.Fatalf("expected cross-host redirect on attachment to be refused")
+	}
+	if got := atomic.LoadInt32(&attackerCalls); got != 0 {
+		t.Errorf("attacker host received %d request(s); expected 0", got)
+	}
+	if attackerKey != "" {
+		t.Errorf("API key leaked off-host via attachment redirect: %q", attackerKey)
+	}
+}
+
 // M1: production HTTP client must set per-phase timeouts so a server that
 // hangs at TCP, TLS, or response-header time can't lock up the CLI. We
 // deliberately leave the body read uncapped so streaming large attachments

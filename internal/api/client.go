@@ -50,6 +50,13 @@ func NewWithToken(baseURL, token string, httpClient *http.Client) *Client {
 // timeouts (dial, TLS handshake, response headers) but no overall body
 // timeout, so streaming a large attachment to disk is not artificially
 // capped. Cancellation of the surrounding context still applies.
+//
+// CheckRedirect refuses cross-host (or cross-scheme) redirects: Go's stdlib
+// only strips a fixed list of auth headers on cross-host redirects and has
+// no knowledge of X-Redmine-API-Key, so a malicious or compromised Redmine
+// server could otherwise exfiltrate the API key by replying with a 302 to an
+// attacker host. Same-host redirects (URL canonicalization, http→same-host
+// path changes) are still followed.
 func DefaultHTTPClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
@@ -64,7 +71,22 @@ func DefaultHTTPClient() *http.Client {
 			IdleConnTimeout:       90 * time.Second,
 			ForceAttemptHTTP2:     true,
 		},
+		CheckRedirect: refuseCrossHostRedirect,
 	}
+}
+
+func refuseCrossHostRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) == 0 {
+		return nil
+	}
+	orig := via[0].URL
+	if req.URL.Scheme != orig.Scheme || req.URL.Host != orig.Host {
+		return fmt.Errorf("refusing cross-host redirect from %s://%s to %s://%s", orig.Scheme, orig.Host, req.URL.Scheme, req.URL.Host)
+	}
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after %d redirects", len(via))
+	}
+	return nil
 }
 
 const (
