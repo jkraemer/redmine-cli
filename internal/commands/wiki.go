@@ -63,11 +63,14 @@ func newWikiGetCmd(rc *runCtx) *cobra.Command {
 			if rc.format == "json" {
 				return output.JSON(rc.out, page)
 			}
-			fmt.Fprintf(rc.out, "# %s\n\n", page.Title)
-			fmt.Fprintf(rc.out, "**Author:** %s  \n", page.Author.Name)
+			// Server-controlled strings reach a terminal; strip ANSI/control
+			// bytes that a malicious wiki editor could embed.
+			clean := output.SanitizeForTerminal
+			fmt.Fprintf(rc.out, "# %s\n\n", clean(page.Title))
+			fmt.Fprintf(rc.out, "**Author:** %s  \n", clean(page.Author.Name))
 			fmt.Fprintf(rc.out, "**Version:** %d  \n", page.Version)
-			fmt.Fprintf(rc.out, "**Updated:** %s\n\n", page.UpdatedOn)
-			fmt.Fprintf(rc.out, "%s\n", page.Text)
+			fmt.Fprintf(rc.out, "**Updated:** %s\n\n", clean(page.UpdatedOn))
+			fmt.Fprintf(rc.out, "%s\n", clean(page.Text))
 			if len(page.Attachments) > 0 {
 				fmt.Fprintln(rc.out, "\n## Attachments")
 				headers := []string{"ID", "Filename", "Size"}
@@ -135,9 +138,9 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 				return output.JSON(rc.out, page)
 			}
 			if page != nil {
-				fmt.Fprintf(rc.out, "Wiki page %q saved (version %d).\n", page.Title, page.Version)
+				fmt.Fprintf(rc.out, "Wiki page %q saved (version %d).\n", output.SanitizeForTerminal(page.Title), page.Version)
 			} else {
-				fmt.Fprintf(rc.out, "Wiki page %q saved.\n", title)
+				fmt.Fprintf(rc.out, "Wiki page %q saved.\n", output.SanitizeForTerminal(title))
 			}
 			return nil
 		},

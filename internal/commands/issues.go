@@ -385,37 +385,41 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 
 func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 	if rc.format == "markdown" {
+		// Every value below is server-controlled and can contain attacker-
+		// chosen ANSI escapes (OSC 52 clipboard write, screen clear, hyperlink
+		// spoofing). Strip control bytes before they reach the terminal.
+		clean := output.SanitizeForTerminal
 		var b strings.Builder
-		fmt.Fprintf(&b, "# #%d %s\n\n", is.ID, is.Subject)
-		fmt.Fprintf(&b, "- **Project:** %s\n", is.Project.Name)
-		fmt.Fprintf(&b, "- **Tracker:** %s\n", is.Tracker.Name)
-		fmt.Fprintf(&b, "- **Status:** %s\n", is.Status.Name)
-		fmt.Fprintf(&b, "- **Priority:** %s\n", is.Priority.Name)
-		fmt.Fprintf(&b, "- **Author:** %s\n", is.Author.Name)
+		fmt.Fprintf(&b, "# #%d %s\n\n", is.ID, clean(is.Subject))
+		fmt.Fprintf(&b, "- **Project:** %s\n", clean(is.Project.Name))
+		fmt.Fprintf(&b, "- **Tracker:** %s\n", clean(is.Tracker.Name))
+		fmt.Fprintf(&b, "- **Status:** %s\n", clean(is.Status.Name))
+		fmt.Fprintf(&b, "- **Priority:** %s\n", clean(is.Priority.Name))
+		fmt.Fprintf(&b, "- **Author:** %s\n", clean(is.Author.Name))
 		if is.AssignedTo != nil {
-			fmt.Fprintf(&b, "- **Assigned to:** %s\n", is.AssignedTo.Name)
+			fmt.Fprintf(&b, "- **Assigned to:** %s\n", clean(is.AssignedTo.Name))
 		}
 		if is.DueDate != "" {
-			fmt.Fprintf(&b, "- **Due:** %s\n", is.DueDate)
+			fmt.Fprintf(&b, "- **Due:** %s\n", clean(is.DueDate))
 		}
-		fmt.Fprintf(&b, "\n%s\n", is.Description)
+		fmt.Fprintf(&b, "\n%s\n", clean(is.Description))
 		if len(is.Journals) > 0 {
 			fmt.Fprintf(&b, "\n## Journals\n\n")
 			for _, j := range is.Journals {
 				if j.Notes == "" {
 					continue
 				}
-				fmt.Fprintf(&b, "**%s** (%s):\n%s\n\n", j.User.Name, j.CreatedOn, j.Notes)
+				fmt.Fprintf(&b, "**%s** (%s):\n%s\n\n", clean(j.User.Name), clean(j.CreatedOn), clean(j.Notes))
 			}
 		}
 		if len(is.Attachments) > 0 {
 			fmt.Fprintf(&b, "\n## Attachments\n\n")
 			for _, a := range is.Attachments {
-				fmt.Fprintf(&b, "- **#%d** %s", a.ID, a.Filename)
+				fmt.Fprintf(&b, "- **#%d** %s", a.ID, clean(a.Filename))
 				if a.Description != "" {
-					fmt.Fprintf(&b, " — %s", a.Description)
+					fmt.Fprintf(&b, " — %s", clean(a.Description))
 				}
-				fmt.Fprintf(&b, " (%s)\n", a.ContentURL)
+				fmt.Fprintf(&b, " (%s)\n", clean(a.ContentURL))
 			}
 		}
 		_, err := fmt.Fprint(rc.out, b.String())

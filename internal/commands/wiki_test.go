@@ -13,6 +13,45 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/api"
 )
 
+// Wiki page Text/Title/Author are server-controlled and reach the terminal
+// in markdown mode. Any ANSI escape sequences embedded by a malicious wiki
+// editor must be stripped before printing.
+func TestWikiGet_Markdown_StripsTerminalEscapes(t *testing.T) {
+	body := "{\"wiki_page\":{" +
+		"\"title\":\"My\\u001b]52;c;X\\u0007Page\"," +
+		"\"text\":\"hello\\u001b[2Jworld\"," +
+		"\"version\":1," +
+		"\"author\":{\"id\":1,\"name\":\"A\\u0007uthor\"}," +
+		"\"updated_on\":\"2026-01-01\"}}"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	c := api.New(srv.URL, "k", srv.Client())
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "get", "MyPage", "--project", "P"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, bad := range []string{"\x1b", "\x07"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("output contains raw control byte %q:\n%s", bad, got)
+		}
+	}
+	// Only the control bytes are stripped; the printable payload between
+	// them survives, which is harmless without the leading ESC/BEL.
+	for _, want := range []string{"My]52;c;XPage", "hello[2Jworld", "Author"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
+	}
+}
+
 // TestWikiPut_Attach_Confirm_Single verifies that wiki put with --attach
 // uploads the file first, then issues a PUT whose wiki_page.uploads
 // references the returned token. The text field must be carried through.

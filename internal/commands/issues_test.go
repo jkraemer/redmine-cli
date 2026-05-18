@@ -260,6 +260,49 @@ func TestIssuesUpdate_NoFields(t *testing.T) {
 	}
 }
 
+// A malicious Redmine user with project edit access can embed ANSI escape
+// sequences (e.g. OSC 52 for clipboard hijack) in fields like subject,
+// description, or journal notes. Markdown output goes to a terminal — those
+// bytes must be stripped before printing.
+func TestIssuesGet_Markdown_StripsTerminalEscapes(t *testing.T) {
+	// Note: JSON string literals here use a real ESC (0x1b) and BEL (0x07).
+	body := "{\"issue\":{\"id\":7," +
+		"\"subject\":\"Innocent\\u001b]52;c;PAYLOAD\\u0007subj\"," +
+		"\"description\":\"line1\\u001b[2Jline2\"," +
+		"\"project\":{\"id\":1,\"name\":\"P\\u0007rj\"}," +
+		"\"tracker\":{\"id\":1,\"name\":\"Bug\"}," +
+		"\"status\":{\"id\":1,\"name\":\"New\"}," +
+		"\"priority\":{\"id\":1,\"name\":\"Normal\"}," +
+		"\"author\":{\"id\":1,\"name\":\"A\\u001bvil\"}," +
+		"\"journals\":[{\"id\":1,\"notes\":\"hi\\u001b[Athere\",\"created_on\":\"t\",\"user\":{\"id\":1,\"name\":\"u\"}}]}}"
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7", "--include", "journals"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, bad := range []string{"\x1b", "\x07"} {
+		if strings.Contains(got, bad) {
+			t.Errorf("output contains raw control byte %q:\n%s", bad, got)
+		}
+	}
+	// Visible (non-control) bytes around the escape sequence survive: we
+	// strip ONLY the bytes a terminal would interpret (ESC, BEL, etc.), not
+	// the printable payload that follows them, which is harmless on its own.
+	for _, want := range []string{"Innocent", "PAYLOAD", "subj", "line1", "line2", "Prj", "Avil"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestIssuesGet_Markdown(t *testing.T) {
 	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"issue":{"id":7,"subject":"Subj","description":"Body","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"}}}`))
