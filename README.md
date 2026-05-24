@@ -174,3 +174,12 @@ When `--config` is omitted, the default
     ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --attach diagram.png --confirm
 
 See `./redmine-cli --agent --help` for machine-readable help.
+
+## License
+
+Copyright (C) 2026 Jens Kraemer
+
+This program is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version. See [LICENSE](LICENSE) for the full text.
