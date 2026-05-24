@@ -21,47 +21,34 @@ Or create `~/.config/redmine-cli/config.toml`:
     api_key = "..."
     default_format = "markdown"   # optional: json (default) or markdown
 
-### Option 2: OAuth 2.0 (headless / agent use)
+Note that with an API key, the CLI will have the exact same permissions as the
+user whose key is used, and there is no way to limit them. If you want to have
+more control over the permissions granted to the CLI, read on and use OAuth 2.0
+instead, or create a dedicated "bot" user account in Redmine and use its API key.
 
-OAuth 2.0 uses the authorization-code + PKCE flow with the out-of-band (OOB)
-redirect URI. This is the correct choice when running `redmine-cli` on a
-headless server or remote VM where a browser callback listener is not feasible.
+### Option 2: OAuth 2.0 (headless / agent use)
 
 #### 1. Register an OAuth application in Redmine
 
-Go to **Administration → OAuth Applications** (or your personal settings if
-using a non-admin account) and create a new application:
+Go to **Administration → Applications** and create a new application:
 
 | Field | Value |
 |---|---|
 | **Name** | `redmine-cli` (or anything you like) |
 | **Redirect URI** | `urn:ietf:wg:oauth:2.0:oob` |
-| **Confidential** | No (public client — PKCE, no secret required) |
-| **Scopes** | Leave blank or select the scopes your Redmine version supports |
+| **Scopes** | Select the maximum set of permissions you want the CLI to have |
 
-Copy the **Client ID** that is shown after saving.
+Copy the **Client ID** and **Client Secret** that are shown after saving.
 
-#### 2. Add the Client ID to your config
+#### 2. Add the client credentials to your config
 
-    url = "https://your.redmine.example"
     oauth_client_id = "your-client-id-here"
-    default_format = "markdown"
+    oauth_client_secret = "your-client-id-here"
 
-The `oauth_client_id` key can also be set via the environment:
+Client ID and secret can also be set via the environment:
 
     export REDMINE_OAUTH_CLIENT_ID=your-client-id-here
-    export REDMINE_OAUTH_CLIENT_SECRET=your-client-secret  # only for confidential clients (see below)
-
-#### Confidential client (older Redmine without PKCE support)
-
-If your Redmine instance requires a client secret, add it to your config:
-
-    oauth_client_id = "your-client-id"
-    oauth_client_secret = "your-client-secret"
-
-The CLI detects the secret automatically and switches to the confidential
-client flow (no PKCE). The `auth login` / `logout` / `status` commands work
-identically in both modes.
+    export REDMINE_OAUTH_CLIENT_SECRET=your-client-secret
 
 #### 3. Authenticate
 
@@ -70,19 +57,16 @@ identically in both modes.
 This will print an authorization URL. Open it in your browser, approve the
 application, and copy the authorization code shown by Redmine. Paste it at
 the prompt. The token is stored inside the config file itself, under a
-`[token]` section (mode 0600), and refreshed automatically. Existing
-installations that still have a `~/.config/redmine-cli/token.json` from
-an earlier version are migrated transparently on the next read or refresh —
-no need to re-authenticate.
+`[token]` section (mode 0600), and refreshed automatically.
 
     redmine-cli auth status   # check current auth method, expiry, granted scope
     redmine-cli auth logout   # revoke and remove stored token
 
 #### Configuring requested scopes
 
-When `oauth_scopes` is unset, Redmine grants only its minimal default scope
-set, which usually limits the client to read-only operations like listing
-projects. To request specific scopes, set `oauth_scopes` in your config:
+By default, Redmine grants only its minimal default scope set, which limits the
+client to few read-only operations like listing projects. To request specific
+scopes, set `oauth_scopes` in your config:
 
     oauth_scopes = ["view_project", "view_issues", "edit_issues",
                     "view_wiki_pages", "edit_wiki_pages", "log_time"]
@@ -96,7 +80,7 @@ authorization request. The granted scope shows up in `auth status` and is
 preserved across token refreshes. See "Reference: Common OAuth scopes"
 below for known values.
 
-#### Granting full scopes (admin workaround)
+#### Granting all scopes (admin workaround)
 
 If you don't want to enumerate scopes manually — or your Redmine version
 doesn't honour the `scope` parameter — and you are a Redmine
@@ -104,23 +88,26 @@ administrator, you can have Redmine grant the application's full
 permitted scope set instead:
 
 1. In Redmine, create the OAuth application and note the **Client ID** and
-   (for confidential clients) **Client Secret**. Put them in the
-   `redmine-cli` config file as described above.
+   **Client Secret**. Put them in the `redmine-cli` config file or environment
+as described above.
 2. Run `redmine-cli auth login`, but **do not** open the URL it prints.
-3. Instead, in the Redmine admin UI, scroll to the table of registered OAuth
-   applications and click **Authorize** next to your application. This
-   requests the maximum set of scopes the application is permitted to use,
-   grants access, and shows an authorization code.
+3. Instead, in the Redmine Administration / Applications table, click the name
+   of the application you just registered, and then click **Authorize** in the
+   table at the bottom. This requests the maximum set of scopes the application is
+   permitted to use (that is, the set of permissions that were selected during the
+   initial creation of the application record), and after you grant access, an
+   authorization code will be shown.
 4. Paste that code at the `redmine-cli` prompt.
 
 The resulting token will carry the full scope set, and refresh tokens will
 preserve it.
 
-#### Reference: Common OAuth scopes
+#### Reference: OAuth scopes / permissions
 
-For convenience, a set of scopes commonly supported by recent Redmine
-installations — useful as a starting point when you configure
-`oauth_scopes` (see #1469):
+The following Redmine permissions are currently used by the CLI. You can grant
+the application only a subset of these, functionality will always be limited to
+the union of application permissions and the permissions, the authorizing user
+actually has in a given project.
 
 - `view_project`
 - `search_project`
@@ -136,12 +123,10 @@ installations — useful as a starting point when you configure
 - `view_time_entries`
 - `log_time`
 
-This list is for local reference only — different Redmine versions
-may expose different scopes.
-
 ### Multiple instances / config files
 
-To run `redmine-cli` against more than one Redmine instance, pass
+To run `redmine-cli` against more than one Redmine instance, you can use a tool
+like `direnv` for per-working directory environment variables, or pass
 `--config <path>` (`-c`) on any command:
 
     redmine-cli --config ~/.config/redmine-cli/projA.toml issues list --project foo
