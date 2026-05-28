@@ -96,7 +96,12 @@ Notes:
 - `wiki put` uses idempotent PUT — it **creates** the page if it doesn't exist, **updates** it if it does.
 - **Write ops are dry-run by default.** Always inspect the preview before adding `--confirm`.
 - `--text` and `--text-file` are mutually exclusive; exactly one is required.
-- Page content uses Redmine Textile markup.
+- Page content uses Redmine's configured markup format - by default this is **CommonMark** (GitHub-flavored Markdown).
+- **Redmine wiki internal links** use the `[[Page Title]]` syntax:
+  - `[[Gitolite-Integration]]` — linked page title shown as display text
+  - `[[Gitolite-Integration|Integration Docs]]` — custom display text
+  - NOT standard markdown `[text](url)` or Textile links — Redmine's renderers handle `[[ ]]` natively
+- Wiki content is sent as raw text via `--text` — Redmine parses it according to the project's markup setting. No need to pre-render or wrap in HTML.
 
 ## Quick Reference — Read
 
