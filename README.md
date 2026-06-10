@@ -22,9 +22,11 @@ Or create `~/.config/redmine-cli/config.toml`:
     default_format = "markdown"   # optional: json (default) or markdown
 
 Note that with an API key, the CLI will have the exact same permissions as the
-user whose key is used, and there is no way to limit them. If you want to have
-more control over the permissions granted to the CLI, read on and use OAuth 2.0
-instead, or create a dedicated "bot" user account in Redmine and use its API key.
+user whose key is used, and there is no way to limit them server-side. If you
+want to have more control over the permissions granted to the CLI, read on and
+use OAuth 2.0 instead, or create a dedicated "bot" user account in Redmine and
+use its API key. To restrict the CLI to reads regardless of auth method, see
+[Read-only mode](#read-only-mode) below.
 
 ### Option 2: OAuth 2.0 (headless / agent use)
 
@@ -122,6 +124,27 @@ actually has in a given project.
 - `edit_wiki_pages`
 - `view_time_entries`
 - `log_time`
+
+### Read-only mode
+
+To restrict the CLI to read-only actions, set `read_only` in the config file:
+
+    read_only = true
+
+or via the environment (which takes precedence, so `REDMINE_READ_ONLY=false`
+overrides a config file that enables it):
+
+    export REDMINE_READ_ONLY=true
+
+In read-only mode, any write — `issues create`, `issues update`, `wiki put`, or
+`time log` run with `--confirm` — is refused before any request is sent, and the
+command exits with code **8**. Dry-run previews (the same commands *without*
+`--confirm`) and all read commands continue to work. `--agent --help` reports
+`read_only: true` and marks write commands as `blocked`.
+
+This is the only way to constrain an API-key client, which otherwise inherits
+the full permissions of its user (see above). With OAuth you can additionally
+limit the granted scopes.
 
 ### Multiple instances / config files
 

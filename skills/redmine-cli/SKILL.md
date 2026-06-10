@@ -45,9 +45,12 @@ binary path when actually running them.
 2. **Use `--agent --help` to discover commands** — works at every level and
    returns structured JSON.
 3. **Write ops are dry-run by default.** `issues create`, `issues update`,
-   and `time log` print the request payload and exit 0 unless `--confirm`
-   is passed. Always run dry-run first to inspect the body, then re-run
-   with `--confirm` to actually send.
+   `wiki put`, and `time log` print the request payload and exit 0 unless
+   `--confirm` is passed. Always run dry-run first to inspect the body, then
+   re-run with `--confirm` to actually send. **If read-only mode is active**,
+   a `--confirm` write is refused with exit 8 (the dry-run preview still
+   works); `--agent --help` then reports `read_only: true` and marks write
+   commands `blocked`. Don't retry an exit-8 write.
 4. **For attachments, follow the path** — `attachments download` writes
    the file to disk and prints the absolute path; read it from there with
    your file tool.
@@ -207,6 +210,12 @@ Or `~/.config/redmine-cli/config.toml`:
     api_key = "..."
     default_format = "markdown"
 
+### Read-only mode
+
+`read_only = true` in the config (or `REDMINE_READ_ONLY=true` in the env,
+which takes precedence) restricts the CLI to reads: any `--confirm` write is
+refused with exit 8. Previews and reads still work.
+
 ### OAuth (alternative to API key)
 
 When using OAuth instead of an API key, set `oauth_client_id` (and
@@ -245,6 +254,10 @@ tokens never leak between instances:
 | 5 | Rate limited (429) |
 | 6 | Network error |
 | 7 | API error (5xx) |
+| 8 | Blocked by read-only mode (a `--confirm` write was refused locally) |
+
+Exit 8 is a local policy refusal, not a server error — do not retry; the
+write will keep failing until read-only mode is turned off.
 
 ## Out of Scope (in flight)
 

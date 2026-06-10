@@ -67,6 +67,14 @@ else lives under `internal/`:
   files that would be uploaded) and exit 0 unless `--confirm` is passed.
   The single emitter is `commands/dryrun.go::renderDryRun`; don't add
   parallel dry-run paths in new commands.
+- **Read-only mode.** `read_only` config / `REDMINE_READ_ONLY` env
+  (resolved in `internal/config`) refuses any `--confirm` write. A single
+  gate in `root.go::PersistentPreRunE` keys on the effective `--confirm`
+  value and returns `ErrReadOnly` (exit 8) before the client is built, so
+  no upload/refresh/call runs — don't add per-command read-only checks.
+  Write commands declare themselves via `addConfirmFlag` (sets the
+  `write` annotation); `--agent --help` and the dry-run footer read that
+  + the resolved flag to advertise the restriction.
 - **Pointer semantics on updates.** `issues update` only sends fields
   that were explicitly set. Pass `--description ""` to clear; omit to
   leave unchanged.
@@ -80,8 +88,8 @@ else lives under `internal/`:
   ignores `--limit`/`--offset`, caps at 1000.
 - **Exit codes are part of the contract** (see `exitCodeFor` in
   `root.go`). 0 OK, 1 generic/4xx-other, 2 not-found, 3 auth/config,
-  4 forbidden, 5 rate-limited, 6 network, 7 5xx. Tests and the agent
-  skill depend on these — preserve them.
+  4 forbidden, 5 rate-limited, 6 network, 7 5xx, 8 blocked by read-only
+  mode. Tests and the agent skill depend on these — preserve them.
 - **HTML escaping is off** for JSON output. Same for markdown dry-run
   bodies — see commit 13c2b83 if you're tempted to re-enable.
 
