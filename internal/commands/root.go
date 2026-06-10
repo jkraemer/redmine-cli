@@ -24,6 +24,7 @@ type runCtx struct {
 	client      *api.Client
 	format      string // "json" or "markdown"
 	agentHelp   bool
+	readOnly    bool
 	configPath  string
 	// parentCtx is the cancellable context for the whole CLI run. The
 	// production wiring derives it from os.Interrupt/SIGTERM in Execute,
@@ -31,6 +32,11 @@ type runCtx struct {
 	// own context for cancellation tests.
 	parentCtx context.Context
 }
+
+// ErrReadOnly is returned when a write is attempted while the CLI is in
+// read-only mode (REDMINE_READ_ONLY env or read_only config). The command is
+// refused before any server call; exitCodeFor maps it to exit code 8.
+var ErrReadOnly = errors.New("read-only mode is enabled; refusing to send a write")
 
 // Build constructs the root command with all subcommands wired in.
 // ctx is the parent context for the whole run; it is propagated to every
@@ -86,6 +92,16 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 		if rc.format == "" {
 			rc.format = cfg.DefaultFormat
 		}
+		rc.readOnly = cfg.ReadOnly
+		// In read-only mode, refuse any confirmed write before the client is
+		// built — so no token refresh, attachment upload, or API call runs.
+		// The --confirm value is the universal write signal; read commands
+		// have no such flag, so GetBool returns its zero value and they pass.
+		if rc.readOnly {
+			if confirm, _ := cmd.Flags().GetBool("confirm"); confirm {
+				return fmt.Errorf("%w: %s", ErrReadOnly, cmd.CommandPath())
+			}
+		}
 		if cfg.AuthMethod() == "oauth" {
 			tok := cfg.Token
 			if tok == nil {
@@ -140,6 +156,9 @@ func Execute() {
 }
 
 func exitCodeFor(err error) int {
+	if errors.Is(err, ErrReadOnly) {
+		return 8
+	}
 	if errors.Is(err, config.ErrMissingURL) || errors.Is(err, config.ErrMissingAPIKey) {
 		return 3
 	}
