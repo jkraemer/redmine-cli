@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,10 @@ type Config struct {
 	OAuthClientSecret string
 	OAuthScopes       []string
 	DefaultFormat     string
+	// ReadOnly restricts the CLI to read-only actions: any write (a command
+	// run with --confirm) is refused. Resolved from REDMINE_READ_ONLY (env,
+	// highest priority) then read_only in the config file.
+	ReadOnly bool
 	// Token holds OAuth tokens loaded from the config file's [token]
 	// section. Nil if no token is stored.
 	Token *auth.Token
@@ -44,6 +49,7 @@ type fileConfig struct {
 	OAuthClientSecret string     `toml:"oauth_client_secret,omitempty"`
 	OAuthScopes       []string   `toml:"oauth_scopes,omitempty"`
 	DefaultFormat     string     `toml:"default_format,omitempty"`
+	ReadOnly          bool       `toml:"read_only,omitempty"`
 	Token             *fileToken `toml:"token,omitempty"`
 }
 
@@ -99,6 +105,12 @@ func Load(path string) (*Config, error) {
 	cfg.OAuthClientSecret = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_SECRET"), fc.OAuthClientSecret)
 	cfg.OAuthScopes = resolveScopes(os.Getenv("REDMINE_OAUTH_SCOPES"), fc.OAuthScopes)
 	cfg.DefaultFormat = firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json")
+
+	ro, err := resolveReadOnly(os.Getenv("REDMINE_READ_ONLY"), fc.ReadOnly)
+	if err != nil {
+		return nil, err
+	}
+	cfg.ReadOnly = ro
 
 	if fc.Token != nil && fc.Token.AccessToken != "" {
 		cfg.Token = &auth.Token{
@@ -282,6 +294,41 @@ func readLegacyToken() *auth.Token {
 		return nil
 	}
 	return &t
+}
+
+// ReadOnly reports whether read-only mode is enabled, resolving
+// REDMINE_READ_ONLY (highest priority) then read_only in the config file at
+// path (empty → default path). Unlike Load it requires neither a URL nor an
+// API key and never fails: a malformed file or invalid env value yields false.
+// It backs display paths (e.g. --agent --help) that must work even when the
+// full config is unusable.
+func ReadOnly(path string) bool {
+	resolved := path
+	if resolved == "" {
+		resolved = defaultConfigPath()
+	}
+	var fileVal bool
+	if resolved != "" {
+		if fc, err := readFileConfig(resolved); err == nil {
+			fileVal = fc.ReadOnly
+		}
+	}
+	ro, _ := resolveReadOnly(os.Getenv("REDMINE_READ_ONLY"), fileVal)
+	return ro
+}
+
+// resolveReadOnly applies env-over-file precedence to the read-only setting.
+// A non-empty REDMINE_READ_ONLY must parse as a bool; an empty value falls
+// back to the file's read_only.
+func resolveReadOnly(env string, fileVal bool) (bool, error) {
+	if s := strings.TrimSpace(env); s != "" {
+		v, err := strconv.ParseBool(s)
+		if err != nil {
+			return false, fmt.Errorf("invalid REDMINE_READ_ONLY value %q: must be true or false", env)
+		}
+		return v, nil
+	}
+	return fileVal, nil
 }
 
 // AuthMethod returns "oauth" if oauth_client_id is configured, else "apikey".
