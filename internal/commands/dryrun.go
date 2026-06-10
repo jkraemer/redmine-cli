@@ -56,7 +56,11 @@ func renderDryRun(rc *runCtx, method, path string, body any, wouldUpload []attac
 		// json.Encoder.Encode appends a trailing newline; trim it so the
 		// closing ``` sits flush against the last line of JSON, matching
 		// the previous json.MarshalIndent behavior.
-		fmt.Fprintf(&b, "DRY RUN -- would %s %s with body:\n```json\n%s\n```\n(re-run with --confirm to send)\n", method, path, strings.TrimRight(raw.String(), "\n"))
+		footer := "(re-run with --confirm to send)"
+		if rc.readOnly {
+			footer = "(read-only mode is active — --confirm is disabled; unset REDMINE_READ_ONLY / read_only to enable writes)"
+		}
+		fmt.Fprintf(&b, "DRY RUN -- would %s %s with body:\n```json\n%s\n```\n%s\n", method, path, strings.TrimRight(raw.String(), "\n"), footer)
 		_, err := fmt.Fprint(rc.out, b.String())
 		return err
 	}
@@ -65,6 +69,9 @@ func renderDryRun(rc *runCtx, method, path string, body any, wouldUpload []attac
 		"method":  method,
 		"path":    path,
 		"body":    body,
+	}
+	if rc.readOnly {
+		payload["read_only"] = true
 	}
 	if len(wouldUpload) > 0 {
 		payload["would_upload"] = wouldUpload

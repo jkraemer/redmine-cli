@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -79,8 +80,60 @@ func TestReadOnly_AllowsPreview(t *testing.T) {
 	if got["method"] != "PUT" {
 		t.Errorf("preview method=%v, want PUT", got["method"])
 	}
+	if got["read_only"] != true {
+		t.Errorf("preview read_only=%v, want true", got["read_only"])
+	}
 	if hits != 0 {
 		t.Errorf("preview made %d requests, want 0", hits)
+	}
+}
+
+func TestRenderDryRun_ReadOnly_JSONHasFlag(t *testing.T) {
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, format: "json", readOnly: true}
+	body := map[string]any{"issue": map[string]any{"notes": "x"}}
+	if err := renderDryRun(rc, "PUT", "/issues/7.json", body, nil); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["read_only"] != true {
+		t.Errorf("read_only=%v, want true", got["read_only"])
+	}
+	if got["dry_run"] != true {
+		t.Errorf("dry_run=%v, want true (preview still shown)", got["dry_run"])
+	}
+}
+
+func TestRenderDryRun_NotReadOnly_JSONOmitsFlag(t *testing.T) {
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, format: "json", readOnly: false}
+	if err := renderDryRun(rc, "PUT", "/x", map[string]any{"issue": map[string]any{}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if _, ok := got["read_only"]; ok {
+		t.Errorf("read_only should be omitted when not read-only, got %v", got["read_only"])
+	}
+}
+
+func TestRenderDryRun_ReadOnly_MarkdownFooter(t *testing.T) {
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, format: "markdown", readOnly: true}
+	if err := renderDryRun(rc, "PUT", "/x", map[string]any{"issue": map[string]any{}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if strings.Contains(s, "re-run with --confirm to send") {
+		t.Errorf("read-only footer must not advise re-running with --confirm:\n%s", s)
+	}
+	if !strings.Contains(s, "read-only mode is active") {
+		t.Errorf("footer should mention read-only mode:\n%s", s)
 	}
 }
 
