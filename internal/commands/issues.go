@@ -254,7 +254,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
 	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
 	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
+	addConfirmFlag(cmd, &confirm)
 	return cmd
 }
 
@@ -379,7 +379,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "New due date (YYYY-MM-DD)")
 	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
 	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
+	addConfirmFlag(cmd, &confirm)
 	return cmd
 }
 

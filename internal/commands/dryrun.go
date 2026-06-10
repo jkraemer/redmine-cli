@@ -6,8 +6,27 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
+
+// confirmFlagHelp is the standard help text for the --confirm flag shared by
+// every write command.
+const confirmFlagHelp = "Actually send the request (without this flag the command runs in dry-run mode)"
+
+// addConfirmFlag wires the standard --confirm flag onto a write command and
+// marks it with the "write" annotation. The annotation is the single source of
+// truth for "this command mutates the server": --agent --help reads it to flag
+// write commands as blocked in read-only mode. Keeping the flag and annotation
+// together means a new write command picks up both at once.
+func addConfirmFlag(cmd *cobra.Command, confirm *bool) {
+	cmd.Flags().BoolVar(confirm, "confirm", false, confirmFlagHelp)
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations["write"] = "true"
+}
 
 // renderDryRun emits a "would do this" preview to rc.out and returns nil.
 // path is the API path portion (e.g. "/issues.json"); we don't have the

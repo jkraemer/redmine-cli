@@ -65,7 +65,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	// nesting level.
 	helpFunc := func(cmd *cobra.Command, _ []string) {
 		if rc.agentHelp {
-			_ = agenthelp.Render(rc.out, cmd)
+			_ = agenthelp.Render(rc.out, cmd, config.ReadOnly(rc.configPath))
 			return
 		}
 		// fall back to default help on stderr

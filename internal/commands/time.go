@@ -71,7 +71,7 @@ func newTimeLogCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&project, "project", "", "Project identifier or ID (mutually exclusive with --issue)")
 	cmd.Flags().StringVar(&date, "date", "", "Date the time was spent (YYYY-MM-DD, default today)")
 	cmd.Flags().StringVar(&msg, "comments", "", "Comments")
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
+	addConfirmFlag(cmd, &confirm)
 	return cmd
 }
 

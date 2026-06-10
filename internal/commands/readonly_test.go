@@ -84,6 +84,58 @@ func TestReadOnly_AllowsPreview(t *testing.T) {
 	}
 }
 
+func TestReadOnly_AgentHelpMarksWriteSubcommands(t *testing.T) {
+	p := writeReadOnlyConfig(t, "https://x")
+
+	var out, errOut bytes.Buffer
+	root := Build(context.Background(), &out, &errOut)
+	root.SetArgs([]string{"--config", p, "issues", "--agent", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["read_only"] != true {
+		t.Errorf("read_only=%v, want true", got["read_only"])
+	}
+	subs, _ := got["subcommands"].([]any)
+	blocked := map[string]bool{}
+	for _, s := range subs {
+		m := s.(map[string]any)
+		blocked[m["name"].(string)] = m["blocked"] == true
+	}
+	for _, name := range []string{"create", "update"} {
+		if !blocked[name] {
+			t.Errorf("write subcommand %q not marked blocked; subs=%v", name, subs)
+		}
+	}
+	for _, name := range []string{"list", "get"} {
+		if blocked[name] {
+			t.Errorf("read subcommand %q must not be blocked; subs=%v", name, subs)
+		}
+	}
+}
+
+func TestReadOnly_AgentHelpMarksWriteLeaf(t *testing.T) {
+	p := writeReadOnlyConfig(t, "https://x")
+
+	var out, errOut bytes.Buffer
+	root := Build(context.Background(), &out, &errOut)
+	root.SetArgs([]string{"--config", p, "issues", "create", "--agent", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["blocked"] != true {
+		t.Errorf("create leaf blocked=%v, want true", got["blocked"])
+	}
+}
+
 func TestReadOnly_AllowsReads(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

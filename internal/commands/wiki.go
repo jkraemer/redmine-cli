@@ -151,6 +151,6 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&textFile, "text-file", "", "Read page content from file (mutually exclusive with --text)")
 	cmd.Flags().StringVar(&comments, "comments", "", "Edit summary / comment")
 	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
-	cmd.Flags().BoolVar(&confirm, "confirm", false, "Actually send the request (without this flag the command runs in dry-run mode)")
+	addConfirmFlag(cmd, &confirm)
 	return cmd
 }
