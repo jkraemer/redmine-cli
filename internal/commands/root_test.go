@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/jkraemer/redmine-cli/internal/api"
 	"github.com/jkraemer/redmine-cli/internal/auth"
@@ -40,6 +41,109 @@ func buildRootForTest(rc *runCtx) *cobra.Command {
 	root.AddCommand(newWikiCmd(rc))
 	root.AddCommand(newQueriesCmd(rc))
 	return root
+}
+
+func TestResolveFormat(t *testing.T) {
+	newFlags := func() *pflag.FlagSet {
+		fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		fs.StringP("format", "f", "", "")
+		fs.BoolP("markdown", "m", false, "")
+		fs.BoolP("json", "j", false, "")
+		return fs
+	}
+
+	tests := []struct {
+		name    string
+		args    []string
+		def     string
+		want    string
+		wantErr bool
+	}{
+		{name: "none falls back to default", args: nil, def: "markdown", want: "markdown"},
+		{name: "none with empty default", args: nil, def: "", want: ""},
+		{name: "-m sets markdown", args: []string{"-m"}, def: "json", want: "markdown"},
+		{name: "-j sets json", args: []string{"-j"}, def: "markdown", want: "json"},
+		{name: "--format value", args: []string{"--format", "markdown"}, def: "json", want: "markdown"},
+		{name: "-f value", args: []string{"-f", "json"}, def: "markdown", want: "json"},
+		{name: "-m and -j conflict", args: []string{"-m", "-j"}, def: "json", wantErr: true},
+		{name: "-m and -f conflict", args: []string{"-m", "-f", "json"}, def: "json", wantErr: true},
+		{name: "-j and --format conflict", args: []string{"-j", "--format", "markdown"}, def: "json", wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fs := newFlags()
+			if err := fs.Parse(tt.args); err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			got, err := resolveFormat(fs, tt.def)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected error, got format %q", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveFormat = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestRoot_MarkdownShorthand drives the real Build wiring to confirm the -m
+// persistent flag reaches resolveFormat through a subcommand's Flags() and
+// selects markdown output.
+func TestRoot_MarkdownShorthand(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"projects":[{"id":1,"identifier":"foo","name":"Foo"}],"total_count":1,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", srv.URL)
+	t.Setenv("REDMINE_API_KEY", "k")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	var out bytes.Buffer
+	root := Build(context.Background(), &out, &bytes.Buffer{})
+	root.SetArgs([]string{"projects", "list", "-m"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if !strings.Contains(out.String(), "| ID | Identifier | Name |") {
+		t.Errorf("-m did not select markdown:\n%s", out.String())
+	}
+}
+
+// TestRoot_ConflictingFormatFlags confirms that passing both -m and -j is
+// refused before any server call.
+func TestRoot_ConflictingFormatFlags(t *testing.T) {
+	var hit bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hit = true
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", srv.URL)
+	t.Setenv("REDMINE_API_KEY", "k")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	root := Build(context.Background(), &bytes.Buffer{}, &bytes.Buffer{})
+	root.SetArgs([]string{"projects", "list", "-m", "-j"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error for conflicting format flags, got nil")
+	}
+	if !strings.Contains(err.Error(), "only one") {
+		t.Errorf("error should explain the conflict: %q", err.Error())
+	}
+	if hit {
+		t.Error("server was called despite a flag conflict")
+	}
 }
 
 func TestRoot_AgentHelp(t *testing.T) {

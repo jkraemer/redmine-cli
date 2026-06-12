@@ -40,8 +40,9 @@ binary path when actually running them.
 
 ## Agent Invariants
 
-1. **Choose the right output mode:** `--format json` (default) for parsing,
-   `--format markdown` (`-m`) for human-readable output.
+1. **Choose the right output mode:** `--format json` (`-j`, default) for
+   parsing, `--format markdown` (`-m`) for human-readable output. Pass at most
+   one of `--format`/`-m`/`-j`.
 2. **Use `--agent --help` to discover commands** — works at every level and
    returns structured JSON.
 3. **Write ops are dry-run by default.** `issues create`, `issues update`,

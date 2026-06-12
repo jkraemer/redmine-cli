@@ -8,9 +8,11 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/jkraemer/redmine-cli/internal/agenthelp"
 	"github.com/jkraemer/redmine-cli/internal/api"
@@ -55,6 +57,8 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.SetErr(errOut)
 
 	root.PersistentFlags().StringVarP(&rc.format, "format", "f", "", "Output format: json or markdown (default from config)")
+	root.PersistentFlags().BoolP("markdown", "m", false, "Shorthand for --format markdown")
+	root.PersistentFlags().BoolP("json", "j", false, "Shorthand for --format json")
 	root.PersistentFlags().StringVarP(&rc.configPath, "config", "c", "",
 		"Path to config file")
 	root.PersistentFlags().BoolVar(&rc.agentHelp, "agent", false, "When combined with --help, emit machine-readable JSON")
@@ -89,9 +93,11 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 		for _, w := range cfg.Warnings {
 			fmt.Fprintln(rc.errOut, "warning:", w)
 		}
-		if rc.format == "" {
-			rc.format = cfg.DefaultFormat
+		format, err := resolveFormat(cmd.Flags(), cfg.DefaultFormat)
+		if err != nil {
+			return err
 		}
+		rc.format = format
 		rc.readOnly = cfg.ReadOnly
 		// In read-only mode, refuse any confirmed write before the client is
 		// built — so no token refresh, attachment upload, or API call runs.
@@ -153,6 +159,37 @@ func Execute() {
 	}
 	fmt.Fprintln(os.Stderr, err.Error())
 	os.Exit(exitCodeFor(err))
+}
+
+// resolveFormat determines the output format from the mutually exclusive
+// format flags. -m and -j are shorthands for --format markdown and
+// --format json; at most one of --format, -m, or -j may be set. When none is
+// set, def (the config default) is returned.
+func resolveFormat(flags *pflag.FlagSet, def string) (string, error) {
+	var set []string
+	if flags.Changed("format") {
+		set = append(set, "--format")
+	}
+	if flags.Changed("markdown") {
+		set = append(set, "-m")
+	}
+	if flags.Changed("json") {
+		set = append(set, "-j")
+	}
+	if len(set) > 1 {
+		return "", fmt.Errorf("conflicting output format flags (%s): use only one of --format, -m, -j", strings.Join(set, ", "))
+	}
+	switch {
+	case flags.Changed("markdown"):
+		return "markdown", nil
+	case flags.Changed("json"):
+		return "json", nil
+	case flags.Changed("format"):
+		v, _ := flags.GetString("format")
+		return v, nil
+	default:
+		return def, nil
+	}
 }
 
 func exitCodeFor(err error) int {
