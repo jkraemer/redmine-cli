@@ -53,6 +53,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	root.Version = buildVersion
 	root.SetOut(out)
 	root.SetErr(errOut)
 
@@ -88,7 +89,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
 		// Skip client init for help-only invocations.
-		if cmd.Name() == "help" || cmd.Name() == "redmine-cli" {
+		if cmd.Name() == "help" || cmd.Name() == "version" || cmd.Name() == "redmine-cli" {
 			return nil
 		}
 		// Auth subcommands manage the token themselves; skip client init.
@@ -155,6 +156,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newWikiCmd(rc))
 	root.AddCommand(newQueriesCmd(rc))
 	root.AddCommand(newAuthCmd(rc))
+	root.AddCommand(newVersionCmd(rc))
 
 	return root
 }
