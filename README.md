@@ -2,6 +2,20 @@
 
 Agent-friendly CLI for the Redmine/Planio API.
 
+## Install
+
+As an agent skill (installs SKILL.md into your agents' skill
+directories, then downloads the checksum-verified release binary for
+your platform):
+
+    npx skills add -g jkraemer/redmine-cli
+    ~/.agents/skills/redmine-cli/bootstrap.sh
+
+Binary only: grab a platform archive from
+[GitHub Releases](https://github.com/jkraemer/redmine-cli/releases), or
+
+    go install github.com/jkraemer/redmine-cli/cmd/redmine-cli@latest
+
 ## Build
 
     make build
