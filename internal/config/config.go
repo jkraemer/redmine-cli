@@ -170,12 +170,12 @@ func (c *Config) SaveToken(tok *auth.Token) error {
 	if tok == nil {
 		return errors.New("SaveToken: nil token (use DeleteToken to clear)")
 	}
-	fc, err := readFileConfig(c.Path)
+	raw, err := readRawConfig(c.Path)
 	if err != nil {
 		return err
 	}
-	fc.Token = fromAuthToken(tok)
-	if err := writeFileConfig(c.Path, fc); err != nil {
+	raw["token"] = fromAuthToken(tok)
+	if err := writeRawConfig(c.Path, raw); err != nil {
 		return err
 	}
 	c.Token = tok
@@ -199,12 +199,12 @@ func (c *Config) DeleteToken() error {
 		c.Token = nil
 		return nil
 	}
-	fc, err := readFileConfig(c.Path)
+	raw, err := readRawConfig(c.Path)
 	if err != nil {
 		return err
 	}
-	fc.Token = nil
-	if err := writeFileConfig(c.Path, fc); err != nil {
+	delete(raw, "token")
+	if err := writeRawConfig(c.Path, raw); err != nil {
 		return err
 	}
 	c.Token = nil
@@ -225,9 +225,24 @@ func readFileConfig(path string) (*fileConfig, error) {
 	return &fc, nil
 }
 
-// writeFileConfig atomically writes the fileConfig as TOML to path with
+// readRawConfig parses the TOML file at path into a generic map. Token
+// writes rewrite the whole file, so they go through this instead of the
+// typed fileConfig — a rewrite must preserve keys this CLI version doesn't
+// know about. A missing file yields an empty map.
+func readRawConfig(path string) (map[string]any, error) {
+	raw := map[string]any{}
+	if _, err := toml.DecodeFile(path, &raw); err != nil {
+		if os.IsNotExist(err) {
+			return raw, nil
+		}
+		return nil, err
+	}
+	return raw, nil
+}
+
+// writeRawConfig atomically writes raw as TOML to path with
 // mode 0600 by writing to a temp file in the same directory and renaming.
-func writeFileConfig(path string, fc *fileConfig) error {
+func writeRawConfig(path string, raw map[string]any) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -237,7 +252,7 @@ func writeFileConfig(path string, fc *fileConfig) error {
 		return err
 	}
 	enc := toml.NewEncoder(f)
-	if err := enc.Encode(fc); err != nil {
+	if err := enc.Encode(raw); err != nil {
 		f.Close()
 		os.Remove(f.Name())
 		return err

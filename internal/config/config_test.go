@@ -381,6 +381,89 @@ api_key = "k"
 	}
 }
 
+// TestSaveToken_PreservesUnknownKeys: the token rewrite must not silently
+// delete keys this CLI version doesn't know about (typos, future settings).
+// This matters because SaveToken runs implicitly on token refresh, not just
+// on explicit auth login.
+func TestSaveToken_PreservesUnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url = "https://x"
+oauth_client_id = "cid"
+custom_note = "keep me"
+
+[future_section]
+knob = 42
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveToken(&auth.Token{AccessToken: "AT", TokenType: "Bearer"}); err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`custom_note = "keep me"`, "[future_section]", "knob = 42"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("unknown key %q dropped by SaveToken:\n%s", want, body)
+		}
+	}
+	cfg2, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.Token == nil || cfg2.Token.AccessToken != "AT" {
+		t.Errorf("token not persisted: %+v", cfg2.Token)
+	}
+}
+
+func TestDeleteToken_PreservesUnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url = "https://x"
+oauth_client_id = "cid"
+custom_note = "keep me"
+
+[token]
+access_token = "AT"
+token_type = "Bearer"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.DeleteToken(); err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `custom_note = "keep me"`) {
+		t.Errorf("unknown key dropped by DeleteToken:\n%s", body)
+	}
+	if strings.Contains(string(body), "access_token") {
+		t.Errorf("token section not removed:\n%s", body)
+	}
+}
+
 func TestSaveToken_CreatesFileIfMissing(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "fresh.toml")
