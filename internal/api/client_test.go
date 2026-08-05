@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -931,5 +932,30 @@ func TestListIssues_OmitsQueryIDWhenZero(t *testing.T) {
 	}
 	if strings.Contains(gotURL, "query_id") {
 		t.Errorf("URL should not contain query_id when unset: %s", gotURL)
+	}
+}
+
+func TestListCategories(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/projects/my proj/issue_categories.json" {
+			t.Errorf("path=%s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"issue_categories":[{"id":3,"name":"UI","project":{"id":1,"name":"P"},"assigned_to":{"id":2,"name":"Jens"}},{"id":4,"name":"Backend","project":{"id":1,"name":"P"}}]}`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	res, err := c.ListCategories(context.Background(), "my proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.IssueCategories) != 2 {
+		t.Fatalf("got %d categories", len(res.IssueCategories))
+	}
+	if res.IssueCategories[0].AssignedTo == nil || res.IssueCategories[0].AssignedTo.Name != "Jens" {
+		t.Errorf("assigned_to not parsed: %+v", res.IssueCategories[0])
+	}
+	if res.IssueCategories[1].AssignedTo != nil {
+		t.Errorf("expected nil assigned_to for category without default assignee")
 	}
 }

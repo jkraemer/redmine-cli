@@ -358,3 +358,16 @@ type WikiPageWrite struct {
 	Comments string      `json:"comments,omitempty"`
 	Uploads  []UploadRef `json:"uploads,omitempty"`
 }
+
+// Category is a project issue category.
+type Category struct {
+	ID         int     `json:"id"`
+	Name       string  `json:"name"`
+	Project    IDName  `json:"project"`
+	AssignedTo *IDName `json:"assigned_to,omitempty"`
+}
+
+// ListCategoriesResult is the wrapped /projects/{id}/issue_categories.json response.
+type ListCategoriesResult struct {
+	IssueCategories []Category `json:"issue_categories"`
+}

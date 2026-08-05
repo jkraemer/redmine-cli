@@ -614,3 +614,14 @@ func (c *Client) PutWikiPage(ctx context.Context, projectID, title string, p Wik
 	}
 	return &out.WikiPage, nil
 }
+
+// ListCategories lists a project's issue categories via
+// /projects/{id}/issue_categories.json. The endpoint is not paginated.
+func (c *Client) ListCategories(ctx context.Context, projectID string) (*ListCategoriesResult, error) {
+	var res ListCategoriesResult
+	path := fmt.Sprintf("/projects/%s/issue_categories.json", url.PathEscape(projectID))
+	if err := c.doJSON(ctx, path, nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
