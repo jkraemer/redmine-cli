@@ -378,6 +378,9 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 		fmt.Fprintf(&b, "- **Tracker:** %s\n", clean(is.Tracker.Name))
 		fmt.Fprintf(&b, "- **Status:** %s\n", clean(is.Status.Name))
 		fmt.Fprintf(&b, "- **Priority:** %s\n", clean(is.Priority.Name))
+		if is.Category != nil {
+			fmt.Fprintf(&b, "- **Category:** %s\n", clean(is.Category.Name))
+		}
 		fmt.Fprintf(&b, "- **Author:** %s\n", clean(is.Author.Name))
 		if is.AssignedTo != nil {
 			fmt.Fprintf(&b, "- **Assigned to:** %s\n", clean(is.AssignedTo.Name))

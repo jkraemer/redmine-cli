@@ -71,15 +71,17 @@ type Issue struct {
 	Priority    IDName  `json:"priority"`
 	Author      IDName  `json:"author"`
 	AssignedTo  *IDName `json:"assigned_to,omitempty"`
+	Category    *IDName `json:"category,omitempty"`
 	StartDate   string  `json:"start_date,omitempty"`
 	DueDate     string  `json:"due_date,omitempty"`
 	DoneRatio   int     `json:"done_ratio,omitempty"`
 	CreatedOn   string  `json:"created_on,omitempty"`
 	UpdatedOn   string  `json:"updated_on,omitempty"`
 
-	Journals    []Journal    `json:"journals,omitempty"`
-	Attachments []Attachment `json:"attachments,omitempty"`
-	Watchers    []IDName     `json:"watchers,omitempty"`
+	Journals     []Journal          `json:"journals,omitempty"`
+	Attachments  []Attachment       `json:"attachments,omitempty"`
+	Watchers     []IDName           `json:"watchers,omitempty"`
+	CustomFields []CustomFieldValue `json:"custom_fields,omitempty"`
 }
 
 // Journal is one entry in an issue's history.
@@ -150,10 +152,13 @@ type GetIssueParams struct {
 	Include []string // journals, attachments, relations, children, watchers
 }
 
-// CustomFieldValue is a single custom field assignment for create/update payloads.
+// CustomFieldValue is a single custom field assignment for create/update
+// payloads. Name is populated on reads (GET responses include it); writes
+// never set it, so omitempty keeps the write wire format unchanged.
 type CustomFieldValue struct {
-	ID    int `json:"id"`
-	Value any `json:"value"`
+	ID    int    `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Value any    `json:"value"`
 }
 
 // IssueCreate is the payload for POST /issues.json. The CLI wraps this in

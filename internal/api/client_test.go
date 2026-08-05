@@ -278,6 +278,27 @@ func TestListProjects_OK(t *testing.T) {
 	}
 }
 
+// Redmine returns "category": {"id","name"} and "custom_fields": [...] on
+// issues, but the CLI silently dropped both because Issue had no fields for
+// them.
+func TestGetIssue_DecodesCategoryAndCustomFields(t *testing.T) {
+	body := `{"issue":{"id":7,"subject":"Subj","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"},"category":{"id":5,"name":"UI"},"custom_fields":[{"id":10,"name":"Severity","value":"High"}]}}`
+	srv := newTestServer(t, 200, body)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	issue, err := c.GetIssue(context.Background(), 7, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issue.Category == nil || issue.Category.ID != 5 || issue.Category.Name != "UI" {
+		t.Errorf("Category not decoded: %+v", issue.Category)
+	}
+	if len(issue.CustomFields) != 1 || issue.CustomFields[0].ID != 10 || issue.CustomFields[0].Name != "Severity" || issue.CustomFields[0].Value != "High" {
+		t.Errorf("CustomFields not decoded: %+v", issue.CustomFields)
+	}
+}
+
 func TestGetIssue_NotFound(t *testing.T) {
 	srv := newTestServer(t, 404, `{}`)
 	defer srv.Close()
