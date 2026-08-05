@@ -24,7 +24,9 @@ func collectPages[T any](limit, offset int, all bool, fetch func(limit, offset i
 		limit = paginateAllPageSize
 		offset = 0
 	}
-	var collected []T
+	// Non-nil so an empty result marshals as JSON [] rather than null —
+	// agent consumers (e.g. jq's .issues[]) hard-error on null.
+	collected := []T{}
 	for {
 		items, total, err := fetch(limit, offset)
 		if err != nil {

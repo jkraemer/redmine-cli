@@ -1357,3 +1357,51 @@ func TestIssuesCreate_Watchers_DryRunBody(t *testing.T) {
 		t.Errorf("watcher_user_ids=%v", issue["watcher_user_ids"])
 	}
 }
+
+// TestIssuesList_EmptyRendersEmptyArray pins the agent-surface contract that
+// an empty result set is JSON [] (never null).
+func TestIssuesList_EmptyRendersEmptyArray(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "list"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), `"issues": []`) {
+		t.Errorf("empty list should render as []:\n%s", out.String())
+	}
+}
+
+// TestIssuesGet_Markdown_ShowsCustomFields: custom field values must appear
+// in the human-readable detail view (read/write parity with --cf); empty
+// values are omitted, multi-value fields join with ", ".
+func TestIssuesGet_Markdown_ShowsCustomFields(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issue":{"id":1,"subject":"s","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"custom_fields":[{"id":5,"name":"Severity","value":"high"},{"id":6,"name":"Empty","value":""},{"id":7,"name":"Tags","value":["a","b"]}]}}`))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "1"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "- **Severity:** high") {
+		t.Errorf("missing custom field line:\n%s", s)
+	}
+	if strings.Contains(s, "**Empty:**") {
+		t.Errorf("empty-valued custom field should be omitted:\n%s", s)
+	}
+	if !strings.Contains(s, "- **Tags:** a, b") {
+		t.Errorf("multi-value field should join values:\n%s", s)
+	}
+}

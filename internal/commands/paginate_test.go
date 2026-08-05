@@ -112,6 +112,23 @@ func TestCollectPages_AllStopsOnEmptyPage(t *testing.T) {
 	}
 }
 
+// TestCollectPages_EmptyResultIsNonNil: a nil slice marshals to JSON null,
+// which breaks agent-side consumers like jq's .issues[]; empty results must
+// render as [].
+func TestCollectPages_EmptyResultIsNonNil(t *testing.T) {
+	var calls [][2]int
+	got, err := collectPages(25, 0, false, fakePages(nil, 0, &calls))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatal("empty result must be a non-nil slice so JSON renders [] instead of null")
+	}
+	if len(got) != 0 {
+		t.Errorf("len=%d, want 0", len(got))
+	}
+}
+
 func TestCollectPages_PropagatesFetchError(t *testing.T) {
 	boom := errors.New("boom")
 	_, err := collectPages(25, 0, false, func(_, _ int) ([]int, int, error) {

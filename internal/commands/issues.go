@@ -366,6 +366,24 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	return cmd
 }
 
+// customFieldValueString renders a custom field's value for display.
+// Values arrive as JSON scalars or, for multi-value fields, arrays;
+// arrays are joined with ", ". Unset fields ("" or null) yield "".
+func customFieldValueString(v any) string {
+	switch vv := v.(type) {
+	case nil:
+		return ""
+	case []any:
+		parts := make([]string, 0, len(vv))
+		for _, e := range vv {
+			parts = append(parts, fmt.Sprintf("%v", e))
+		}
+		return strings.Join(parts, ", ")
+	default:
+		return fmt.Sprintf("%v", vv)
+	}
+}
+
 func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 	if rc.format == "markdown" {
 		// Every value below is server-controlled and can contain attacker-
@@ -387,6 +405,11 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 		}
 		if is.DueDate != "" {
 			fmt.Fprintf(&b, "- **Due:** %s\n", clean(is.DueDate))
+		}
+		for _, cf := range is.CustomFields {
+			if val := customFieldValueString(cf.Value); val != "" {
+				fmt.Fprintf(&b, "- **%s:** %s\n", clean(cf.Name), clean(val))
+			}
 		}
 		fmt.Fprintf(&b, "\n%s\n", clean(is.Description))
 		if len(is.Journals) > 0 {
