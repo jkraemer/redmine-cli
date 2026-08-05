@@ -46,21 +46,25 @@ func renderDryRun(rc *runCtx, method, path string, body any, wouldUpload []attac
 				fmt.Fprintf(&b, "  %d. %s%s\n", i+1, spec.Path, attachMetaParens(spec))
 			}
 		}
-		var raw bytes.Buffer
-		enc := json.NewEncoder(&raw)
-		enc.SetIndent("", "  ")
-		enc.SetEscapeHTML(false)
-		if err := enc.Encode(body); err != nil {
-			return err
-		}
-		// json.Encoder.Encode appends a trailing newline; trim it so the
-		// closing ``` sits flush against the last line of JSON, matching
-		// the previous json.MarshalIndent behavior.
 		footer := "(re-run with --confirm to send)"
 		if rc.readOnly {
 			footer = "(read-only mode is active — --confirm is disabled; unset REDMINE_READ_ONLY / read_only to enable writes)"
 		}
-		fmt.Fprintf(&b, "DRY RUN -- would %s %s with body:\n```json\n%s\n```\n%s\n", method, path, strings.TrimRight(raw.String(), "\n"), footer)
+		if body == nil {
+			fmt.Fprintf(&b, "DRY RUN -- would %s %s\n%s\n", method, path, footer)
+		} else {
+			var raw bytes.Buffer
+			enc := json.NewEncoder(&raw)
+			enc.SetIndent("", "  ")
+			enc.SetEscapeHTML(false)
+			if err := enc.Encode(body); err != nil {
+				return err
+			}
+			// json.Encoder.Encode appends a trailing newline; trim it so the
+			// closing ``` sits flush against the last line of JSON, matching
+			// the previous json.MarshalIndent behavior.
+			fmt.Fprintf(&b, "DRY RUN -- would %s %s with body:\n```json\n%s\n```\n%s\n", method, path, strings.TrimRight(raw.String(), "\n"), footer)
+		}
 		_, err := fmt.Fprint(rc.out, b.String())
 		return err
 	}
@@ -68,7 +72,9 @@ func renderDryRun(rc *runCtx, method, path string, body any, wouldUpload []attac
 		"dry_run": true,
 		"method":  method,
 		"path":    path,
-		"body":    body,
+	}
+	if body != nil {
+		payload["body"] = body
 	}
 	if rc.readOnly {
 		payload["read_only"] = true
