@@ -985,3 +985,45 @@ func TestListCustomFields(t *testing.T) {
 		t.Errorf("possible_values wrong: %+v", cf.PossibleValues)
 	}
 }
+
+func TestAddWatcher(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/issues/42/watchers.json" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if err := c.AddWatcher(context.Background(), 42, 7); err != nil {
+		t.Fatal(err)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(gotBody, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["user_id"] != float64(7) {
+		t.Errorf("body=%s", gotBody)
+	}
+}
+
+func TestRemoveWatcher(t *testing.T) {
+	var called bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != "DELETE" || r.URL.Path != "/issues/42/watchers/7.json" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if err := c.RemoveWatcher(context.Background(), 42, 7); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Error("server not called")
+	}
+}

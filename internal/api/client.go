@@ -456,6 +456,20 @@ func (c *Client) UpdateIssue(ctx context.Context, id int, p IssueUpdate) error {
 	return c.doWriteJSON(ctx, "PUT", fmt.Sprintf("/issues/%d.json", id), in, nil)
 }
 
+// AddWatcher subscribes a user to an issue via POST /issues/{id}/watchers.json.
+func (c *Client) AddWatcher(ctx context.Context, issueID, userID int) error {
+	in := struct {
+		UserID int `json:"user_id"`
+	}{UserID: userID}
+	return c.doWriteJSON(ctx, "POST", fmt.Sprintf("/issues/%d/watchers.json", issueID), in, nil)
+}
+
+// RemoveWatcher unsubscribes a user from an issue via
+// DELETE /issues/{id}/watchers/{user_id}.json.
+func (c *Client) RemoveWatcher(ctx context.Context, issueID, userID int) error {
+	return c.doWriteJSON(ctx, "DELETE", fmt.Sprintf("/issues/%d/watchers/%d.json", issueID, userID), nil, nil)
+}
+
 // GetCurrentUser fetches /users/current.json.
 func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
 	var wrapper struct {
