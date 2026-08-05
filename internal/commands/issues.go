@@ -128,7 +128,7 @@ func newIssuesGetCmd(rc *runCtx) *cobra.Command {
 			return renderIssueDetail(rc, issue)
 		},
 	}
-	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children")
+	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, watchers")
 	return cmd
 }
 
@@ -403,6 +403,12 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 					fmt.Fprintf(&b, " — %s", clean(a.Description))
 				}
 				fmt.Fprintf(&b, " (%s)\n", clean(a.ContentURL))
+			}
+		}
+		if len(is.Watchers) > 0 {
+			fmt.Fprintf(&b, "\n## Watchers\n\n")
+			for _, w := range is.Watchers {
+				fmt.Fprintf(&b, "- %s\n", clean(w.Name))
 			}
 		}
 		_, err := fmt.Fprint(rc.out, b.String())

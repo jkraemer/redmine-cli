@@ -369,6 +369,25 @@ func TestIssuesGet_Markdown_NoAttachmentsSection_WhenEmpty(t *testing.T) {
 	}
 }
 
+func TestIssuesGet_Markdown_ShowsWatchers(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"issue":{"id":1,"subject":"s","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"watchers":[{"id":3,"name":"Watcher One"},{"id":4,"name":"Watcher Two"}]}}`))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "1", "--include", "watchers"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "## Watchers") || !strings.Contains(s, "Watcher One") {
+		t.Errorf("watchers section missing:\n%s", s)
+	}
+}
+
 func TestIssuesUpdate_NotesFile_DryRun(t *testing.T) {
 	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("server should not be called in dry-run mode")

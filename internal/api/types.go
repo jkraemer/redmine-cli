@@ -79,6 +79,7 @@ type Issue struct {
 
 	Journals    []Journal    `json:"journals,omitempty"`
 	Attachments []Attachment `json:"attachments,omitempty"`
+	Watchers    []IDName     `json:"watchers,omitempty"`
 }
 
 // Journal is one entry in an issue's history.
@@ -146,7 +147,7 @@ type ListProjectsParams struct {
 
 // GetIssueParams covers the include flags accepted by /issues/{id}.json.
 type GetIssueParams struct {
-	Include []string // journals, attachments, relations, children
+	Include []string // journals, attachments, relations, children, watchers
 }
 
 // CustomFieldValue is a single custom field assignment for create/update payloads.
