@@ -1,6 +1,9 @@
 # Bootstrap a pristine Redmine container for e2e tests. Idempotent.
 # Run via: bin/rails runner /bootstrap.rb  (inside the container)
-# Prints two lines: the admin API token, then the e2e project identifier.
+# Prints two prefixed lines: e2e_token=<api token>, e2e_project=<identifier>.
+# The prefixes let run.sh find these lines even if rails runner also emits
+# warnings to stdout (e.g. Redmine 5.1's "Creating scope" ActiveRecord
+# warnings).
 begin
   Redmine::DefaultData::Loader.load('en')
 rescue Redmine::DefaultData::DataAlreadyLoaded
@@ -27,5 +30,5 @@ unless IssueCustomField.find_by(name: 'E2E Text')
                            is_for_all: true, trackers: Tracker.sorted.to_a)
 end
 
-puts token.value
-puts project.identifier
+puts "e2e_token=#{token.value}"
+puts "e2e_project=#{project.identifier}"

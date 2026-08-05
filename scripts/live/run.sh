@@ -35,8 +35,8 @@ done
 
 "$RUNTIME" cp "$REPO_ROOT/scripts/live/bootstrap.rb" "$NAME:/bootstrap.rb"
 BOOT_OUT="$("$RUNTIME" exec "$NAME" bin/rails runner /bootstrap.rb)"
-API_KEY="$(echo "$BOOT_OUT" | sed -n 1p)"
-PROJECT="$(echo "$BOOT_OUT" | sed -n 2p)"
+API_KEY="$(printf '%s\n' "$BOOT_OUT" | sed -n 's/^e2e_token=//p' | tail -1)"
+PROJECT="$(printf '%s\n' "$BOOT_OUT" | sed -n 's/^e2e_project=//p' | tail -1)"
 if [ -z "$API_KEY" ] || [ -z "$PROJECT" ]; then
   echo "bootstrap failed; output was:" >&2
   echo "$BOOT_OUT" >&2
