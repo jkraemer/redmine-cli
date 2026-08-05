@@ -66,6 +66,8 @@ func TestResolveFormat(t *testing.T) {
 		{name: "--format value", args: []string{"--format", "markdown"}, def: "json", want: "markdown"},
 		{name: "-f value", args: []string{"-f", "json"}, def: "markdown", want: "json"},
 		{name: "-m and -j conflict", args: []string{"-m", "-j"}, def: "json", wantErr: true},
+		{name: "--format rejects unknown value", args: []string{"--format", "xml"}, def: "json", wantErr: true},
+		{name: "invalid config default is rejected", args: nil, def: "markdow", wantErr: true},
 		{name: "-m and -f conflict", args: []string{"-m", "-f", "json"}, def: "json", wantErr: true},
 		{name: "-j and --format conflict", args: []string{"-j", "--format", "markdown"}, def: "json", wantErr: true},
 	}

@@ -186,8 +186,16 @@ func resolveFormat(flags *pflag.FlagSet, def string) (string, error) {
 		return "json", nil
 	case flags.Changed("format"):
 		v, _ := flags.GetString("format")
+		if v != "json" && v != "markdown" {
+			return "", fmt.Errorf("invalid format %q: must be json or markdown", v)
+		}
 		return v, nil
 	default:
+		// def comes from config/env; an empty value means "no default
+		// configured" and is left for the caller's fallback.
+		if def != "" && def != "json" && def != "markdown" {
+			return "", fmt.Errorf("invalid default_format %q: must be json or markdown", def)
+		}
 		return def, nil
 	}
 }

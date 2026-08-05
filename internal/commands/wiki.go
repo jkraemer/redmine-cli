@@ -32,15 +32,15 @@ func newWikiListCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if rc.format == "json" {
-				return output.JSON(rc.out, res)
+			if rc.format == "markdown" {
+				headers := []string{"Title", "Version", "Updated"}
+				rows := make([][]string, len(res.WikiPages))
+				for i, p := range res.WikiPages {
+					rows[i] = []string{p.Title, fmt.Sprintf("%d", p.Version), p.UpdatedOn}
+				}
+				return output.MarkdownTable(rc.out, headers, rows)
 			}
-			headers := []string{"Title", "Version", "Updated"}
-			rows := make([][]string, len(res.WikiPages))
-			for i, p := range res.WikiPages {
-				rows[i] = []string{p.Title, fmt.Sprintf("%d", p.Version), p.UpdatedOn}
-			}
-			return output.MarkdownTable(rc.out, headers, rows)
+			return output.JSON(rc.out, res)
 		},
 	}
 	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Project ID or identifier (required)")
@@ -60,27 +60,27 @@ func newWikiGetCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if rc.format == "json" {
-				return output.JSON(rc.out, page)
-			}
-			// Server-controlled strings reach a terminal; strip ANSI/control
-			// bytes that a malicious wiki editor could embed.
-			clean := output.SanitizeForTerminal
-			fmt.Fprintf(rc.out, "# %s\n\n", clean(page.Title))
-			fmt.Fprintf(rc.out, "**Author:** %s  \n", clean(page.Author.Name))
-			fmt.Fprintf(rc.out, "**Version:** %d  \n", page.Version)
-			fmt.Fprintf(rc.out, "**Updated:** %s\n\n", clean(page.UpdatedOn))
-			fmt.Fprintf(rc.out, "%s\n", clean(page.Text))
-			if len(page.Attachments) > 0 {
-				fmt.Fprintln(rc.out, "\n## Attachments")
-				headers := []string{"ID", "Filename", "Size"}
-				rows := make([][]string, len(page.Attachments))
-				for i, a := range page.Attachments {
-					rows[i] = []string{fmt.Sprintf("%d", a.ID), a.Filename, fmt.Sprintf("%d", a.Filesize)}
+			if rc.format == "markdown" {
+				// Server-controlled strings reach a terminal; strip ANSI/control
+				// bytes that a malicious wiki editor could embed.
+				clean := output.SanitizeForTerminal
+				fmt.Fprintf(rc.out, "# %s\n\n", clean(page.Title))
+				fmt.Fprintf(rc.out, "**Author:** %s  \n", clean(page.Author.Name))
+				fmt.Fprintf(rc.out, "**Version:** %d  \n", page.Version)
+				fmt.Fprintf(rc.out, "**Updated:** %s\n\n", clean(page.UpdatedOn))
+				fmt.Fprintf(rc.out, "%s\n", clean(page.Text))
+				if len(page.Attachments) > 0 {
+					fmt.Fprintln(rc.out, "\n## Attachments")
+					headers := []string{"ID", "Filename", "Size"}
+					rows := make([][]string, len(page.Attachments))
+					for i, a := range page.Attachments {
+						rows[i] = []string{fmt.Sprintf("%d", a.ID), a.Filename, fmt.Sprintf("%d", a.Filesize)}
+					}
+					return output.MarkdownTable(rc.out, headers, rows)
 				}
-				return output.MarkdownTable(rc.out, headers, rows)
+				return nil
 			}
-			return nil
+			return output.JSON(rc.out, page)
 		},
 	}
 	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Project ID or identifier (required)")
@@ -134,15 +134,15 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if rc.format == "json" {
-				return output.JSON(rc.out, page)
+			if rc.format == "markdown" {
+				if page != nil {
+					fmt.Fprintf(rc.out, "Wiki page %q saved (version %d).\n", output.SanitizeForTerminal(page.Title), page.Version)
+				} else {
+					fmt.Fprintf(rc.out, "Wiki page %q saved.\n", output.SanitizeForTerminal(title))
+				}
+				return nil
 			}
-			if page != nil {
-				fmt.Fprintf(rc.out, "Wiki page %q saved (version %d).\n", output.SanitizeForTerminal(page.Title), page.Version)
-			} else {
-				fmt.Fprintf(rc.out, "Wiki page %q saved.\n", output.SanitizeForTerminal(title))
-			}
-			return nil
+			return output.JSON(rc.out, page)
 		},
 	}
 	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Project ID or identifier (required)")
