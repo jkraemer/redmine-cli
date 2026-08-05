@@ -235,10 +235,10 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 
 func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	var (
-		subject, description, assignee, notes, notesFile, startDate, dueDate string
-		status, priority, done                                               int
-		confirm                                                              bool
-		cfStrs, attachStrs                                                   []string
+		subject, description, assignee, category, notes, notesFile, startDate, dueDate string
+		status, priority, done                                                         int
+		confirm                                                                        bool
+		cfStrs, attachStrs                                                             []string
 	)
 	cmd := &cobra.Command{
 		Use:   "update <id>",
@@ -250,7 +250,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("invalid issue id %q", args[0])
 			}
 
-			mutating := []string{"subject", "description", "status", "assignee", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf", "attach"}
+			mutating := []string{"subject", "description", "status", "assignee", "category", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf", "attach"}
 			anySet := false
 			for _, n := range mutating {
 				if cmd.Flags().Changed(n) {
@@ -307,6 +307,9 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			if cmd.Flags().Changed("assignee") {
 				payload.AssignedToID = &assignee
 			}
+			if cmd.Flags().Changed("category") {
+				payload.CategoryID = &category
+			}
 			if cmd.Flags().Changed("done") {
 				payload.DoneRatio = &done
 			}
@@ -346,6 +349,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&description, "description", "", "New description")
 	cmd.Flags().IntVar(&status, "status", 0, "New status ID")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "New assignee user ID or 'me'")
+	cmd.Flags().StringVar(&category, "category", "", "New category ID; pass \"\" to clear (see: categories list)")
 	cmd.Flags().IntVar(&priority, "priority", 0, "New priority ID")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
 	cmd.Flags().StringVar(&notes, "notes", "", "Add a journal note")

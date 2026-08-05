@@ -184,6 +184,7 @@ type IssueUpdate struct {
 	StatusID     *int               `json:"status_id,omitempty"`
 	PriorityID   *int               `json:"priority_id,omitempty"`
 	AssignedToID *string            `json:"assigned_to_id,omitempty"`
+	CategoryID   *string            `json:"category_id,omitempty"`
 	DoneRatio    *int               `json:"done_ratio,omitempty"`
 	StartDate    *string            `json:"start_date,omitempty"`
 	DueDate      *string            `json:"due_date,omitempty"`

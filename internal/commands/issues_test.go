@@ -1244,3 +1244,56 @@ func TestIssuesCreate_Category_DryRunBody(t *testing.T) {
 		t.Errorf("category_id=%v", issue["category_id"])
 	}
 }
+
+func TestIssuesUpdate_Category_SetAndClear(t *testing.T) {
+	for _, tc := range []struct {
+		flagVal string
+		want    any
+	}{
+		{"7", "7"},
+		{"", ""},
+	} {
+		c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("server should not be called in dry-run mode")
+		})
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+		root := buildRootForTest(rc)
+		root.SetArgs([]string{"issues", "update", "42", "--category", tc.flagVal})
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		stop()
+		var got map[string]any
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		body, _ := got["body"].(map[string]any)
+		issue, _ := body["issue"].(map[string]any)
+		v, present := issue["category_id"]
+		if !present || v != tc.want {
+			t.Errorf("--category %q: category_id=%v present=%v", tc.flagVal, v, present)
+		}
+	}
+}
+
+func TestIssuesUpdate_NoCategoryFlag_OmitsField(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no server call expected")
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "42", "--subject", "s"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(out.Bytes(), &got)
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	if _, present := issue["category_id"]; present {
+		t.Errorf("category_id must be omitted when flag not set: %v", issue)
+	}
+}
