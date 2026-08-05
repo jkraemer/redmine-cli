@@ -27,38 +27,19 @@ func newQueriesListCmd(rc *runCtx) *cobra.Command {
 			"visibility, and project scope are returned. Global queries " +
 			"(visible across projects) have an empty Project ID.",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if limit < 0 || limit > 100 {
-				return fmt.Errorf("--limit must be between 1 and 100")
-			}
-
-			pageLimit := limit
-			if pageLimit == 0 {
-				pageLimit = 25
-			}
-			pageOffset := offset
-			if all {
-				pageLimit = paginateAllPageSize
-				pageOffset = 0
-			}
-
 			ctx := rc.ctx()
-			var collected []api.Query
-			for {
+			collected, err := collectPages(limit, offset, all, func(limit, offset int) ([]api.Query, int, error) {
 				res, err := rc.client.ListQueries(ctx, api.ListQueriesParams{
-					Limit:  pageLimit,
-					Offset: pageOffset,
+					Limit:  limit,
+					Offset: offset,
 				})
 				if err != nil {
-					return err
+					return nil, 0, err
 				}
-				if all && res.TotalCount > paginateAllCap {
-					return fmt.Errorf("more than %d results (%d); narrow your filters or omit --all", paginateAllCap, res.TotalCount)
-				}
-				collected = append(collected, res.Queries...)
-				if !all || len(collected) >= res.TotalCount || len(res.Queries) == 0 {
-					break
-				}
-				pageOffset += len(res.Queries)
+				return res.Queries, res.TotalCount, nil
+			})
+			if err != nil {
+				return err
 			}
 			return renderQueries(rc, collected)
 		},

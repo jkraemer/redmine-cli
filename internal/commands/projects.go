@@ -23,41 +23,20 @@ func newProjectsListCmd(rc *runCtx) *cobra.Command {
 		Use:   "list",
 		Short: "List projects",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if limit < 0 || limit > 100 {
-				return fmt.Errorf("--limit must be between 1 and 100")
-			}
 			ctx := rc.ctx()
-
-			var collected []api.Project
-			pageLimit := limit
-			if pageLimit == 0 {
-				pageLimit = 25
-			}
-			pageOffset := offset
-			if all {
-				// In --all mode, ignore --limit/--offset and fetch
-				// every page using a fixed internal page size.
-				pageLimit = paginateAllPageSize
-				pageOffset = 0
-			}
-			for {
+			collected, err := collectPages(limit, offset, all, func(limit, offset int) ([]api.Project, int, error) {
 				res, err := rc.client.ListProjects(ctx, api.ListProjectsParams{
-					Limit:  pageLimit,
-					Offset: pageOffset,
+					Limit:  limit,
+					Offset: offset,
 				})
 				if err != nil {
-					return err
+					return nil, 0, err
 				}
-				if all && res.TotalCount > paginateAllCap {
-					return fmt.Errorf("more than %d results (%d); narrow your filters or omit --all", paginateAllCap, res.TotalCount)
-				}
-				collected = append(collected, res.Projects...)
-				if !all || len(collected) >= res.TotalCount || len(res.Projects) == 0 {
-					break
-				}
-				pageOffset += len(res.Projects)
+				return res.Projects, res.TotalCount, nil
+			})
+			if err != nil {
+				return err
 			}
-
 			return renderProjects(rc, collected)
 		},
 	}

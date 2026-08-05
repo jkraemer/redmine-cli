@@ -54,40 +54,19 @@ func newUsersListCmd(rc *runCtx) *cobra.Command {
 		Use:   "list",
 		Short: "List users (admin only on most Redmine installs)",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			if limit < 0 || limit > 100 {
-				return fmt.Errorf("--limit must be between 1 and 100")
-			}
-
-			pageLimit := limit
-			if pageLimit == 0 {
-				pageLimit = 25
-			}
-			pageOffset := offset
-			if all {
-				// In --all mode, ignore --limit/--offset and fetch
-				// every page using a fixed internal page size.
-				pageLimit = paginateAllPageSize
-				pageOffset = 0
-			}
-
 			ctx := rc.ctx()
-			var collected []api.User
-			for {
+			collected, err := collectPages(limit, offset, all, func(limit, offset int) ([]api.User, int, error) {
 				res, err := rc.client.ListUsers(ctx, api.ListUsersParams{
-					Limit:  pageLimit,
-					Offset: pageOffset,
+					Limit:  limit,
+					Offset: offset,
 				})
 				if err != nil {
-					return err
+					return nil, 0, err
 				}
-				if all && res.TotalCount > paginateAllCap {
-					return fmt.Errorf("more than %d results (%d); narrow your filters or omit --all", paginateAllCap, res.TotalCount)
-				}
-				collected = append(collected, res.Users...)
-				if !all || len(collected) >= res.TotalCount || len(res.Users) == 0 {
-					break
-				}
-				pageOffset += len(res.Users)
+				return res.Users, res.TotalCount, nil
+			})
+			if err != nil {
+				return err
 			}
 			return renderUsersList(rc, collected)
 		},

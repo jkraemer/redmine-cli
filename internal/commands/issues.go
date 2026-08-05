@@ -13,15 +13,6 @@ import (
 	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
-// paginateAllPageSize is the internal page size used when --all is set on
-// list commands. paginateAllCap is the maximum allowed total_count; if the
-// server reports more than this many results, --all aborts with an error
-// asking the caller to narrow their filters.
-const (
-	paginateAllPageSize = 100
-	paginateAllCap      = 1000
-)
-
 // parseCustomFields converts repeated --cf "id=value" strings into typed
 // CustomFieldValue entries. It rejects malformed inputs and duplicate IDs.
 func parseCustomFields(specs []string) ([]api.CustomFieldValue, error) {
@@ -78,47 +69,29 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 		Use:   "list",
 		Short: "List issues",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if limit < 0 || limit > 100 {
-				return fmt.Errorf("--limit must be between 1 and 100")
-			}
-
 			p := api.ListIssuesParams{
 				ProjectID:  project,
 				StatusID:   status,
 				AssignedTo: assignee,
 				Sort:       sort,
-				Limit:      limit,
-				Offset:     offset,
 				Include:    includes,
 				QueryID:    queryID,
 			}
 			if updatedSince != "" {
 				p.UpdatedOn = ">=" + updatedSince
 			}
-			if all {
-				// In --all mode, ignore --limit/--offset and fetch
-				// every page using a fixed internal page size.
-				p.Limit = paginateAllPageSize
-				p.Offset = 0
-			} else if p.Limit == 0 {
-				p.Limit = 25
-			}
-
 			ctx := rc.ctx()
-			var collected []api.Issue
-			for {
+			collected, err := collectPages(limit, offset, all, func(limit, offset int) ([]api.Issue, int, error) {
+				p.Limit = limit
+				p.Offset = offset
 				res, err := rc.client.ListIssues(ctx, p)
 				if err != nil {
-					return err
+					return nil, 0, err
 				}
-				if all && res.TotalCount > paginateAllCap {
-					return fmt.Errorf("more than %d results (%d); narrow your filters or omit --all", paginateAllCap, res.TotalCount)
-				}
-				collected = append(collected, res.Issues...)
-				if !all || len(collected) >= res.TotalCount || len(res.Issues) == 0 {
-					break
-				}
-				p.Offset += len(res.Issues)
+				return res.Issues, res.TotalCount, nil
+			})
+			if err != nil {
+				return err
 			}
 			return renderIssueList(rc, collected)
 		},

@@ -24,9 +24,6 @@ func newSearchCmd(rc *runCtx) *cobra.Command {
 		Short: "Search issues, wiki pages, and projects",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if limit < 0 || limit > 100 {
-				return fmt.Errorf("--limit must be between 1 and 100")
-			}
 			if scope != "" {
 				switch scope {
 				case "all", "my_projects", "subprojects":
@@ -44,8 +41,6 @@ func newSearchCmd(rc *runCtx) *cobra.Command {
 
 			p := api.SearchParams{
 				Q:          query,
-				Limit:      limit,
-				Offset:     offset,
 				Issues:     issues,
 				Wiki:       wiki,
 				Projects:   projects,
@@ -53,32 +48,19 @@ func newSearchCmd(rc *runCtx) *cobra.Command {
 				Scope:      scope,
 				ProjectID:  project,
 			}
-			if all {
-				// In --all mode, ignore --limit/--offset and fetch
-				// every page using a fixed internal page size.
-				p.Limit = paginateAllPageSize
-				p.Offset = 0
-			} else if p.Limit == 0 {
-				p.Limit = 25
-			}
-
 			ctx := rc.ctx()
-			var collected []api.SearchResult
-			for {
+			collected, err := collectPages(limit, offset, all, func(limit, offset int) ([]api.SearchResult, int, error) {
+				p.Limit = limit
+				p.Offset = offset
 				res, err := rc.client.Search(ctx, p)
 				if err != nil {
-					return err
+					return nil, 0, err
 				}
-				if all && res.TotalCount > paginateAllCap {
-					return fmt.Errorf("more than %d results (%d); narrow your filters or omit --all", paginateAllCap, res.TotalCount)
-				}
-				collected = append(collected, res.Results...)
-				if !all || len(collected) >= res.TotalCount || len(res.Results) == 0 {
-					break
-				}
-				p.Offset += len(res.Results)
+				return res.Results, res.TotalCount, nil
+			})
+			if err != nil {
+				return err
 			}
-
 			return renderSearch(rc, collected)
 		},
 	}
