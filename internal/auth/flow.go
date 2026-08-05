@@ -13,6 +13,12 @@ import (
 
 const redirectURI = "urn:ietf:wg:oauth:2.0:oob"
 
+// httpClient is used for the token endpoint calls. Unlike the API client's
+// per-phase timeouts, a single overall timeout is fine here: token responses
+// are small, and a refresh runs implicitly before most commands, so an
+// unresponsive server must never hang the CLI indefinitely.
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 // AuthorizeURL builds the authorization URL the user must open in their browser.
 // When pkce is false (confidential client), the code_challenge params are omitted.
 // When scopes is non-empty, they are joined with spaces and sent as the "scope"
@@ -66,7 +72,7 @@ func Exchange(baseURL, clientID, clientSecret, code, verifier string) (*Token, e
 	} else {
 		form.Set("code_verifier", verifier)
 	}
-	resp, err := http.PostForm(endpoint, form)
+	resp, err := httpClient.PostForm(endpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
@@ -107,7 +113,7 @@ func Refresh(baseURL, clientID, clientSecret, refreshToken string) (*Token, erro
 	if clientSecret != "" {
 		form.Set("client_secret", clientSecret)
 	}
-	resp, err := http.PostForm(endpoint, form)
+	resp, err := httpClient.PostForm(endpoint, form)
 	if err != nil {
 		return nil, fmt.Errorf("token refresh: %w", err)
 	}

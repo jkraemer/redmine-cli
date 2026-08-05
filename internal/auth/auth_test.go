@@ -188,6 +188,70 @@ func TestRefreshWithScope_ServerEchoWins(t *testing.T) {
 	}
 }
 
+// hangingServer returns a server whose handler blocks until the test ends.
+// Used to prove the token endpoints are called with a timeout instead of
+// http.DefaultClient, which would hang forever.
+func hangingServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	hang := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		<-hang
+	}))
+	t.Cleanup(func() {
+		close(hang)
+		srv.Close()
+	})
+	return srv
+}
+
+// withShortHTTPTimeout shrinks the package HTTP client's timeout for the
+// duration of one test so timeout behavior is observable without waiting
+// out the production value.
+func withShortHTTPTimeout(t *testing.T) {
+	t.Helper()
+	orig := httpClient
+	httpClient = &http.Client{Timeout: 50 * time.Millisecond}
+	t.Cleanup(func() { httpClient = orig })
+}
+
+func TestExchange_TimesOutOnHangingServer(t *testing.T) {
+	srv := hangingServer(t)
+	withShortHTTPTimeout(t)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Exchange(srv.URL, "cid", "", "code", "verifier")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Exchange hung on an unresponsive server; no timeout applied")
+	}
+}
+
+func TestRefresh_TimesOutOnHangingServer(t *testing.T) {
+	srv := hangingServer(t)
+	withShortHTTPTimeout(t)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Refresh(srv.URL, "cid", "", "RT")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Refresh hung on an unresponsive server; no timeout applied")
+	}
+}
+
 func TestTokenExpired(t *testing.T) {
 	past := &Token{ExpiresAt: time.Now().Add(-time.Minute)}
 	if !past.Expired() {
