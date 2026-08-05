@@ -287,6 +287,49 @@ func TestAuthStatus_ShowsNoneWhenScopeMissing(t *testing.T) {
 	}
 }
 
+// TestAuthStatus_PrintsExpiryInUTC pins the expiry display to actual UTC:
+// the stored token carries a +02:00 offset, and the "… UTC" line must show
+// the converted instant, not the offset's wall-clock time.
+func TestAuthStatus_PrintsExpiryInUTC(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	cfgDir := filepath.Join(dir, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"),
+		[]byte(`url="https://x"`+"\n"+`oauth_client_id="cid"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+	t.Setenv("REDMINE_API_KEY", "")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	exp := time.Now().Add(time.Hour).In(time.FixedZone("PLUSTWO", 2*3600))
+	if err := cfg.SaveToken(&auth.Token{
+		AccessToken: "AT",
+		TokenType:   "Bearer",
+		ExpiresAt:   exp,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}}
+	cmd := newAuthStatusCmd(rc)
+	if err := cmd.RunE(cmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	want := exp.UTC().Format("2006-01-02 15:04:05") + " UTC"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("expiry not shown in UTC: want %q in output:\n%s", want, out.String())
+	}
+}
+
 func TestConfigFlag_PicksAlternatePath(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir()) // hermetic: no default config exists
