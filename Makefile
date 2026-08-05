@@ -1,4 +1,4 @@
-.PHONY: build test generate clean fmt vet dist
+.PHONY: build test generate clean fmt vet dist live-test
 
 BIN := redmine-cli
 PKG := ./cmd/redmine-cli
@@ -29,3 +29,6 @@ vet:
 clean:
 	rm -f $(BIN)
 	rm -rf dist
+
+live-test: # REDMINE_VERSION=<tag> e.g. make live-test REDMINE_VERSION=6.1
+	scripts/live/run.sh $(REDMINE_VERSION)
