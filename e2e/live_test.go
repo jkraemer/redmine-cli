@@ -36,32 +36,23 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
 	binPath = filepath.Join(dir, "redmine-cli")
 	build := exec.Command("go", "build", "-o", binPath, "../cmd/redmine-cli")
 	build.Stderr = os.Stderr
 	if err := build.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, "building binary:", err)
+		os.RemoveAll(dir)
 		os.Exit(1)
 	}
-	os.Exit(m.Run())
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
 }
 
 // run executes the binary with args plus -j, returning stdout, stderr, exit code.
 func run(t *testing.T, args ...string) (string, string, int) {
 	t.Helper()
-	cmd := exec.Command(binPath, append(args, "-j")...)
-	var out, errOut bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &errOut
-	err := cmd.Run()
-	code := 0
-	if ee, ok := err.(*exec.ExitError); ok {
-		code = ee.ExitCode()
-	} else if err != nil {
-		t.Fatalf("running %v: %v", args, err)
-	}
-	return out.String(), errOut.String(), code
+	return runWithEnv(t, nil, args...)
 }
 
 // runJSON is run + assert exit 0 + unmarshal stdout into a map.

@@ -4,7 +4,11 @@
 set -euo pipefail
 
 VERSION="${1:?usage: run.sh <redmine-version>}"
-RUNTIME="${RUNTIME:-$(command -v docker || command -v podman)}"
+RUNTIME="${RUNTIME:-$(command -v docker || command -v podman || true)}"
+if [ -z "${RUNTIME:-}" ]; then
+  echo "error: neither docker nor podman found on PATH" >&2
+  exit 1
+fi
 PORT="${PORT:-3000}"
 NAME="redmine-e2e-${VERSION//./-}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
