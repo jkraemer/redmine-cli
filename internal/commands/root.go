@@ -148,6 +148,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTrackersCmd(rc))
 	root.AddCommand(newStatusesCmd(rc))
 	root.AddCommand(newPrioritiesCmd(rc))
+	root.AddCommand(newCategoriesCmd(rc))
 	root.AddCommand(newTimeActivitiesCmd(rc))
 	root.AddCommand(newSearchCmd(rc))
 	root.AddCommand(newWikiCmd(rc))
