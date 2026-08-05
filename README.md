@@ -216,17 +216,6 @@ instead of tearing it down, so you can poke at the instance or re-run
 CI (`.github/workflows/ci.yml`) runs the hermetic suite plus the live suite
 against Redmine 5.1, 6.1, and 7.0 on every push and pull request.
 
-## Releases
-
-Tagging and pushing to the `gh` remote cuts a release:
-
-    git tag v0.1.0 && git push gh v0.1.0
-
-A GitHub Actions workflow (`.github/workflows/release.yml`) then runs
-goreleaser, which builds binaries for 5 platforms (linux/amd64,
-linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) and publishes
-them to GitHub Releases.
-
 ## License
 
 Copyright (C) 2026 Jens Kraemer

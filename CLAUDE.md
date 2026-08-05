@@ -14,6 +14,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 `e2e/` is gated behind `-tags live` (`go test -tags live ./e2e`) so `go build
 ./...` and the hermetic `make test` never require a live Redmine.
 
+## Releasing
+
+Pushing a `vX.Y.Z` tag to the GitHub repo (jkraemer/redmine-cli) triggers
+`.github/workflows/release.yml`, which runs goreleaser and publishes
+binaries for 5 platforms to GitHub Releases. Before tagging: move the
+`[Unreleased]` entries in `CHANGELOG.md` into a new version section.
+
 `make generate` is intentionally a no-op — see `api/SOURCE.md`. The
 OpenAPI spec under `api/` is vendored documentation; oapi-codegen is
 disabled because upstream uses inline `oneOf` schemas that produce
