@@ -252,6 +252,45 @@ func TestRefresh_TimesOutOnHangingServer(t *testing.T) {
 	}
 }
 
+// TestExchange_SanitizesServerErrorStrings: error/error_description are
+// decoded JSON strings, so a malicious server can smuggle raw ESC bytes via
+// \u001b escapes. Those strings land on stderr and must be stripped of
+// terminal control bytes, matching the policy applied to api.Error bodies.
+func TestExchange_SanitizesServerErrorStrings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"access_\u001b[31mdenied","error_description":"\u001b[2Jevil"}`)
+	}))
+	defer srv.Close()
+
+	_, err := Exchange(srv.URL, "cid", "", "code", "verifier")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if strings.Contains(err.Error(), "\x1b") {
+		t.Errorf("error string contains raw ESC byte: %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "evil") {
+		t.Errorf("visible characters should survive sanitization: %q", err.Error())
+	}
+}
+
+func TestRefresh_SanitizesServerErrorStrings(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"error":"invalid_grant","error_description":"\u001b[2Jevil"}`)
+	}))
+	defer srv.Close()
+
+	_, err := Refresh(srv.URL, "cid", "", "RT")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if strings.Contains(err.Error(), "\x1b") {
+		t.Errorf("error string contains raw ESC byte: %q", err.Error())
+	}
+}
+
 func TestTokenExpired(t *testing.T) {
 	past := &Token{ExpiresAt: time.Now().Add(-time.Minute)}
 	if !past.Expired() {

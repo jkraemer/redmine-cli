@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/jkraemer/redmine-cli/internal/output"
 )
 
 const redirectURI = "urn:ietf:wg:oauth:2.0:oob"
@@ -82,11 +84,14 @@ func Exchange(baseURL, clientID, clientSecret, code, verifier string) (*Token, e
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, fmt.Errorf("decode token response: %w", err)
 	}
+	// error/error_description (and the raw body excerpt below) are
+	// server-controlled and end up on stderr; strip terminal control bytes,
+	// matching the policy applied to api.Error bodies.
 	if tr.Error != "" {
-		return nil, fmt.Errorf("token error %s: %s", tr.Error, tr.ErrorDesc)
+		return nil, fmt.Errorf("token error %s: %s", output.SanitizeForTerminal(tr.Error), output.SanitizeForTerminal(tr.ErrorDesc))
 	}
 	if tr.AccessToken == "" {
-		return nil, fmt.Errorf("no access_token in response (status %d): %s", resp.StatusCode, body)
+		return nil, fmt.Errorf("no access_token in response (status %d): %s", resp.StatusCode, output.SanitizeForTerminal(string(body)))
 	}
 	t := &Token{
 		AccessToken:  tr.AccessToken,
@@ -123,8 +128,9 @@ func Refresh(baseURL, clientID, clientSecret, refreshToken string) (*Token, erro
 	if err := json.Unmarshal(body, &tr); err != nil {
 		return nil, fmt.Errorf("decode refresh response: %w", err)
 	}
+	// Server-controlled strings headed for stderr; see Exchange.
 	if tr.Error != "" {
-		return nil, fmt.Errorf("refresh error %s: %s", tr.Error, tr.ErrorDesc)
+		return nil, fmt.Errorf("refresh error %s: %s", output.SanitizeForTerminal(tr.Error), output.SanitizeForTerminal(tr.ErrorDesc))
 	}
 	t := &Token{
 		AccessToken:  tr.AccessToken,
