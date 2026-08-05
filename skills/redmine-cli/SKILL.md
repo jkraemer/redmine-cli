@@ -31,12 +31,16 @@ distribution tracked in #1462.
 
 ## Binary location
 
-The `redmine-cli` binary ships alongside this SKILL.md. Invoke it via
-its full path — it is **not** assumed to be on `$PATH`. The default
-install location is `~/.claude/skills/redmine-cli/redmine-cli`; if you
-placed the skill folder elsewhere, use that path instead. All example
+The `redmine-cli` binary lives alongside this SKILL.md. Invoke it via
+its full path — it is **not** assumed to be on `$PATH`. All example
 commands below say `redmine-cli` for brevity — substitute the full
 binary path when actually running them.
+
+**If the binary is missing** (skill installed from git or a skills
+manager, which ship no binaries): run `bash <skill-dir>/bootstrap.sh`
+once. It downloads the latest release binary for this platform from
+GitHub Releases, verifies it against the release checksums, and places
+it next to this file. Pass a version argument (e.g. `0.1.0`) to pin.
 
 ## Agent Invariants
 

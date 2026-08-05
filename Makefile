@@ -12,6 +12,7 @@ dist:
 	mkdir -p $(DIST)
 	go build -o $(DIST)/$(BIN) $(PKG)
 	cp skills/redmine-cli/SKILL.md $(DIST)/SKILL.md
+	cp skills/redmine-cli/bootstrap.sh $(DIST)/bootstrap.sh
 	@echo "Built $(DIST)/ — drop into ~/.claude/skills/"
 
 test:
