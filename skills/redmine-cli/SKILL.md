@@ -120,6 +120,7 @@ Notes:
 | List saved queries | `redmine-cli queries list` |
 | Run a saved query | `redmine-cli issues list --query-id 42 --all` |
 | Get full issue with journals | `redmine-cli issues get 1459 --include journals,attachments` |
+| Get issue with watchers | `redmine-cli issues get 1459 --include watchers` |
 | Download attachment | `redmine-cli attachments download 42` |
 | Save attachment to a path | `redmine-cli attachments download 42 -o /tmp/foo.png` |
 
@@ -133,6 +134,8 @@ Notes:
 | Issue statuses | `redmine-cli statuses list` |
 | Priorities | `redmine-cli priorities list` |
 | Time-entry activities | `redmine-cli time-activities list` |
+| Issue categories (per project) | `redmine-cli categories list --project myproj` |
+| Custom fields (admin only) | `redmine-cli custom-fields list` |
 
 ## Quick Reference — Search
 
@@ -162,6 +165,14 @@ Scopes: `--scope all|my_projects|subprojects` (default = `all`).
 | Set custom field on update | `redmine-cli issues update 42 --cf 7=value --confirm` |
 | Preview time log | `redmine-cli time log --hours 1.5 --activity 12 --issue 42 --comments "Investigated"` |
 | Log time | append `--confirm` |
+| Issue with category | append `--category 7` |
+| Issue with watchers | append `--watcher 3 --watcher 8` |
+| Set category on update | `redmine-cli issues update 42 --category 7 --confirm` |
+| Clear category | `redmine-cli issues update 42 --category "" --confirm` |
+| Preview add watcher | `redmine-cli issues watchers add 42 7` |
+| Add watcher | append `--confirm` |
+| Preview remove watcher | `redmine-cli issues watchers remove 42 7` |
+| Remove watcher | append `--confirm` |
 
 ### Update semantics
 
@@ -177,9 +188,9 @@ sends it as the `notes` field. Mutually exclusive with `--notes`.
 ### Custom fields
 
 `--cf <id>=<value>` is repeatable on both `issues create` and
-`issues update`. Look up custom-field IDs from the project settings
-in the web UI; the CLI does not yet have a `custom-fields list`
-command.
+`issues update`. Look up custom-field IDs with `redmine-cli
+custom-fields list` (admin only on most Redmine installs) or from the
+project settings in the web UI.
 
 ### Time log scope
 
@@ -262,6 +273,8 @@ write will keep failing until read-only mode is turned off.
 
 ## Out of Scope (in flight)
 
-- Packaging, distribution — #1462
-
-Watchers and file uploads on create/update are not yet implemented.
+- Packaging, distribution — #1462: Help Desk endpoints, an installer
+  script, and publishing the first actual release remain open. The
+  `version` subcommand and the release workflow (tag `vX.Y.Z`, push to
+  the `gh` remote, goreleaser publishes binaries for 5 platforms to
+  GitHub Releases) already exist.

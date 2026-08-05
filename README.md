@@ -175,13 +175,28 @@ When `--config` is omitted, the default
     ./redmine-cli issues get 1459
     ./redmine-cli issues create --project myproj --tracker 1 --subject "Bug" --attach screenshot.png --confirm
     ./redmine-cli issues update 1459 --attach patch.diff --notes "see attached" --confirm
+    ./redmine-cli issues watchers add 1459 7 --confirm
     ./redmine-cli attachments download 42
     ./redmine-cli wiki list --project myproj
     ./redmine-cli wiki get Architecture --project myproj
     ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --confirm
     ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --attach diagram.png --confirm
+    ./redmine-cli categories list --project myproj
+    ./redmine-cli custom-fields list
+    ./redmine-cli version
 
 See `./redmine-cli --agent --help` for machine-readable help.
+
+## Releases
+
+Tagging and pushing to the `gh` remote cuts a release:
+
+    git tag v0.1.0 && git push gh v0.1.0
+
+A GitHub Actions workflow (`.github/workflows/release.yml`) then runs
+goreleaser, which builds binaries for 5 platforms (linux/amd64,
+linux/arm64, darwin/amd64, darwin/arm64, windows/amd64) and publishes
+them to GitHub Releases.
 
 ## License
 
