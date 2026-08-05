@@ -72,7 +72,16 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 			_ = agenthelp.Render(rc.out, cmd, config.ReadOnly(rc.configPath))
 			return
 		}
-		// fall back to default help on stderr
+		// Fall back to default-style help on stderr: cobra's help template
+		// shows Long (or Short) above the usage block, and overriding
+		// HelpFunc bypasses that template.
+		desc := cmd.Long
+		if desc == "" {
+			desc = cmd.Short
+		}
+		if desc = strings.TrimSpace(desc); desc != "" {
+			fmt.Fprintf(cmd.ErrOrStderr(), "%s\n\n", desc)
+		}
 		_ = cmd.Usage()
 	}
 	root.SetHelpFunc(helpFunc)

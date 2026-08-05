@@ -370,6 +370,35 @@ oauth_client_id = "cid"
 	}
 }
 
+// TestHelp_ShowsLongDescription: human --help must include the command's
+// Long (or Short) description like cobra's default help does — the agent
+// JSON isn't the only consumer of that documentation.
+func TestHelp_ShowsLongDescription(t *testing.T) {
+	var out, errOut bytes.Buffer
+	root := Build(context.Background(), &out, &errOut)
+	root.SetArgs([]string{"queries", "list", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	combined := out.String() + errOut.String()
+	if !strings.Contains(combined, "does not expose a query's") {
+		t.Errorf("help missing the Long description:\n%s", combined)
+	}
+}
+
+func TestHelp_ShowsShortWhenNoLong(t *testing.T) {
+	var out, errOut bytes.Buffer
+	root := Build(context.Background(), &out, &errOut)
+	root.SetArgs([]string{"issues", "list", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	combined := out.String() + errOut.String()
+	if !strings.Contains(combined, "List issues") {
+		t.Errorf("help missing the Short description:\n%s", combined)
+	}
+}
+
 func TestRoot_Help_ListsSubcommands(t *testing.T) {
 	var out, errOut bytes.Buffer
 	root := Build(context.Background(), &out, &errOut)
