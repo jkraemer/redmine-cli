@@ -6,7 +6,9 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Initial feature set, pending the first tagged release.
+## [0.1.0] - 2026-08-05
+
+Initial release.
 
 ### Added
 
