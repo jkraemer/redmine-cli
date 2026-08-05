@@ -36,7 +36,12 @@ func jsonString(s string) string {
 	return string(b)
 }
 
-func TestAttachmentsDownload_TempPath(t *testing.T) {
+// TestAttachmentsDownload_DefaultPath: without -o, downloads land in the
+// per-user cache dir (0700), not a world-shared predictable temp path where
+// another local user could pre-create the directory or plant symlinks.
+func TestAttachmentsDownload_DefaultPath(t *testing.T) {
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
 	srv := singleHostAttachmentSrv(t, "file.txt", "payload")
 	defer srv.Close()
 
@@ -53,8 +58,19 @@ func TestAttachmentsDownload_TempPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	path, _ := got["path"].(string)
+	wantDir := filepath.Join(cacheHome, "redmine-cli")
+	if filepath.Dir(path) != wantDir {
+		t.Errorf("path=%s, want inside %s", path, wantDir)
+	}
 	if !strings.HasSuffix(path, "7-file.txt") {
 		t.Errorf("path=%s", path)
+	}
+	info, err := os.Stat(wantDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o700 {
+		t.Errorf("download dir mode %#o, want 0700", perm)
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -63,13 +79,14 @@ func TestAttachmentsDownload_TempPath(t *testing.T) {
 	if string(data) != "payload" {
 		t.Errorf("file=%q", data)
 	}
-	_ = os.Remove(path)
 }
 
 // H1: server-supplied filename containing path components must not let the
-// download escape the temp directory. We require it to resolve to a basename
-// inside $TMPDIR/redmine-cli, regardless of what the server sent.
+// download escape the download directory. We require it to resolve to a
+// basename inside the cache dir, regardless of what the server sent.
 func TestAttachmentsDownload_StripsPathFromFilename(t *testing.T) {
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
 	srv := singleHostAttachmentSrv(t, "../../evil.txt", "payload")
 	defer srv.Close()
 
@@ -86,9 +103,9 @@ func TestAttachmentsDownload_StripsPathFromFilename(t *testing.T) {
 		t.Fatal(err)
 	}
 	path, _ := got["path"].(string)
-	expectedDir := filepath.Join(os.TempDir(), "redmine-cli")
+	expectedDir := filepath.Join(cacheHome, "redmine-cli")
 	if filepath.Dir(path) != expectedDir {
-		t.Errorf("download escaped temp dir: path=%q dir=%q", path, expectedDir)
+		t.Errorf("download escaped cache dir: path=%q dir=%q", path, expectedDir)
 	}
 	if filepath.Base(path) != "7-evil.txt" {
 		t.Errorf("expected sanitized basename 7-evil.txt, got %q", filepath.Base(path))

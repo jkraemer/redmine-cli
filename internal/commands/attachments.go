@@ -194,7 +194,7 @@ func attachDryRun(specs []attachSpec) []api.UploadRef {
 // directory parts and rejects names that don't carry a usable basename
 // (empty, ".", ".."). The Redmine server is the source of meta.Filename, so
 // we treat it as untrusted: a malicious or compromised server otherwise
-// could direct writes outside of $TMPDIR/redmine-cli.
+// could direct writes outside of the download directory.
 func sanitizeAttachmentFilename(name string) (string, error) {
 	base := filepath.Base(filepath.Clean(name))
 	if base == "" || base == "." || base == ".." || base == string(filepath.Separator) {
@@ -232,8 +232,15 @@ func newAttachmentsDownloadCmd(rc *runCtx) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				dir := filepath.Join(os.TempDir(), "redmine-cli")
-				if err := os.MkdirAll(dir, 0o755); err != nil {
+				// Per-user cache dir with 0700: attachments may be sensitive,
+				// and a predictable world-shared temp path would let another
+				// local user pre-create the directory or plant symlinks.
+				cache, err := os.UserCacheDir()
+				if err != nil {
+					return fmt.Errorf("resolving user cache dir: %w", err)
+				}
+				dir := filepath.Join(cache, "redmine-cli")
+				if err := os.MkdirAll(dir, 0o700); err != nil {
 					return err
 				}
 				dest = filepath.Join(dir, fmt.Sprintf("%d-%s", meta.ID, safeName))
@@ -243,8 +250,13 @@ func newAttachmentsDownloadCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer f.Close()
 			if _, err := io.Copy(f, body); err != nil {
+				f.Close()
+				return err
+			}
+			// A failed close can mean a failed final flush; don't report
+			// success (and print the path) for a truncated file.
+			if err := f.Close(); err != nil {
 				return err
 			}
 			abs, err := filepath.Abs(dest)
@@ -265,6 +277,6 @@ func newAttachmentsDownloadCmd(rc *runCtx) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVarP(&outPath, "out", "o", "", "Output path (default: $TMPDIR/redmine-cli/<id>-<filename>)")
+	cmd.Flags().StringVarP(&outPath, "out", "o", "", "Output path (default: <user cache dir>/redmine-cli/<id>-<filename>)")
 	return cmd
 }
