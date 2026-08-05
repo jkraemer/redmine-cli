@@ -174,6 +174,32 @@ func TestWikiPut_Attach_DryRun(t *testing.T) {
 	}
 }
 
+// TestWikiPut_DryRun_EscapesPath: the preview path must match the path the
+// client would actually request, which escapes project and title.
+func TestWikiPut_DryRun_EscapesPath(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode (path=%s)", r.URL.Path)
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "put", "My Page",
+		"--project", "P", "--text", "hello"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["path"] != "/projects/P/wiki/My%20Page.json" {
+		t.Errorf("preview path not escaped: %v", got["path"])
+	}
+}
+
 // TestWikiPut_Attach_PreflightFailure_NoServerCall verifies a missing
 // local file aborts before any HTTP call.
 func TestWikiPut_Attach_PreflightFailure_NoServerCall(t *testing.T) {

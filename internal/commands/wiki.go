@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -120,7 +121,9 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 			}
 
 			payload := api.WikiPageWrite{Text: text, Comments: comments}
-			path := fmt.Sprintf("/projects/%s/wiki/%s.json", projectID, title)
+			// Escape like the client does, so the dry-run preview shows the
+			// path that would actually be requested.
+			path := fmt.Sprintf("/projects/%s/wiki/%s.json", url.PathEscape(projectID), url.PathEscape(title))
 
 			if err := applyAttachments(rc.ctx(), rc.client, specs, &payload.Uploads, confirm); err != nil {
 				return err
