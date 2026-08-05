@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/spf13/cobra"
 
@@ -26,7 +27,9 @@ func newTimeLogCmd(rc *runCtx) *cobra.Command {
 		Use:   "log",
 		Short: "Log time against an issue or project (requires --confirm to send)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if hours <= 0 {
+			// NaN fails every comparison, so "hours <= 0" alone lets it
+			// (and +Inf) through to a confusing JSON marshal error.
+			if hours <= 0 || math.IsNaN(hours) || math.IsInf(hours, 0) {
 				return fmt.Errorf("--hours must be > 0")
 			}
 			if activity <= 0 {

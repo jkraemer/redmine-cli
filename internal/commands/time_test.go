@@ -114,3 +114,24 @@ func TestTimeLog_Validation(t *testing.T) {
 		})
 	}
 }
+
+// TestTimeLog_RejectsNonFiniteHours: NaN slips past "hours <= 0" (NaN
+// comparisons are false) and +Inf is > 0; both would only die later with a
+// confusing JSON marshal error. They must be rejected up front.
+func TestTimeLog_RejectsNonFiniteHours(t *testing.T) {
+	for _, hours := range []string{"NaN", "+Inf", "-Inf"} {
+		t.Run(hours, func(t *testing.T) {
+			var out bytes.Buffer
+			rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, format: "json"}
+			root := buildRootForTest(rc)
+			root.SetArgs([]string{"time", "log", "--hours", hours, "--activity", "8", "--issue", "1"})
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("expected error for --hours %s, got output:\n%s", hours, out.String())
+			}
+			if !strings.Contains(err.Error(), "--hours") {
+				t.Errorf("error should name --hours: %q", err.Error())
+			}
+		})
+	}
+}
