@@ -240,3 +240,46 @@ func TestTimeActivitiesList_JSON(t *testing.T) {
 		t.Errorf("output unexpected: %s", out.String())
 	}
 }
+
+func TestCustomFieldsList_JSON(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"custom_fields":[{"id":5,"name":"Severity","customized_type":"issue","field_format":"list","is_required":true,"possible_values":[{"value":"low","label":"Low"}]}]}`))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"custom-fields", "list"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v", err)
+	}
+	cfs, _ := got["custom_fields"].([]any)
+	if len(cfs) != 1 {
+		t.Fatalf("custom_fields=%v", got)
+	}
+}
+
+func TestCustomFieldsList_Markdown(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"custom_fields":[{"id":5,"name":"Severity","customized_type":"issue","field_format":"list","is_required":true,"multiple":false,"possible_values":[{"value":"low","label":"Low"},{"value":"high","label":"High"}]}]}`))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"custom-fields", "list"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Severity", "issue", "list", "low, high"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("table missing %q:\n%s", want, out.String())
+		}
+	}
+}

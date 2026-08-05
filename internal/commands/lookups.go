@@ -246,3 +246,48 @@ func renderActivities(rc *runCtx, activities []api.Activity) error {
 	}
 	return output.JSON(rc.out, map[string]any{"time_entry_activities": activities})
 }
+
+// ----- custom fields -----
+
+func newCustomFieldsCmd(rc *runCtx) *cobra.Command {
+	c := &cobra.Command{Use: "custom-fields", Short: "Custom field definitions"}
+	c.AddCommand(newCustomFieldsListCmd(rc))
+	return c
+}
+
+func newCustomFieldsListCmd(rc *runCtx) *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List custom field definitions (admin only on most Redmine installs)",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			res, err := rc.client.ListCustomFields(rc.ctx())
+			if err != nil {
+				return err
+			}
+			return renderCustomFields(rc, res)
+		},
+	}
+}
+
+func renderCustomFields(rc *runCtx, res *api.ListCustomFieldsResult) error {
+	if rc.format == "markdown" {
+		rows := make([][]string, len(res.CustomFields))
+		for i, cf := range res.CustomFields {
+			values := make([]string, len(cf.PossibleValues))
+			for j, pv := range cf.PossibleValues {
+				values[j] = pv.Value
+			}
+			rows[i] = []string{
+				fmt.Sprintf("%d", cf.ID),
+				cf.Name,
+				cf.CustomizedType,
+				cf.FieldFormat,
+				fmt.Sprintf("%t", cf.IsRequired),
+				fmt.Sprintf("%t", cf.Multiple),
+				strings.Join(values, ", "),
+			}
+		}
+		return output.MarkdownTable(rc.out, []string{"ID", "Name", "Type", "Format", "Required", "Multiple", "Possible Values"}, rows)
+	}
+	return output.JSON(rc.out, res)
+}
