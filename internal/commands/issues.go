@@ -154,6 +154,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 		tracker, status, priority, parent, done                               int
 		confirm                                                               bool
 		cfStrs, attachStrs                                                    []string
+		watchers                                                              []int
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -187,19 +188,20 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 			}
 
 			payload := api.IssueCreate{
-				ProjectID:     project,
-				TrackerID:     tracker,
-				Subject:       subject,
-				Description:   description,
-				StatusID:      status,
-				PriorityID:    priority,
-				AssignedToID:  assignee,
-				CategoryID:    category,
-				ParentIssueID: parent,
-				StartDate:     startDate,
-				DueDate:       dueDate,
-				DoneRatio:     done,
-				CustomFields:  cfs,
+				ProjectID:      project,
+				TrackerID:      tracker,
+				Subject:        subject,
+				Description:    description,
+				StatusID:       status,
+				PriorityID:     priority,
+				AssignedToID:   assignee,
+				CategoryID:     category,
+				ParentIssueID:  parent,
+				StartDate:      startDate,
+				DueDate:        dueDate,
+				DoneRatio:      done,
+				CustomFields:   cfs,
+				WatcherUserIDs: watchers,
 			}
 			if err := applyAttachments(rc.ctx(), rc.client, specs, &payload.Uploads, confirm); err != nil {
 				return err
@@ -227,6 +229,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&startDate, "start-date", "", "Start date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
+	cmd.Flags().IntSliceVar(&watchers, "watcher", nil, "Watcher user ID (repeatable)")
 	cmd.Flags().StringSliceVar(&cfStrs, "cf", nil, "Custom field id=value (repeatable)")
 	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
 	addConfirmFlag(cmd, &confirm)

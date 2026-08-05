@@ -158,20 +158,21 @@ type CustomFieldValue struct {
 // IssueCreate is the payload for POST /issues.json. The CLI wraps this in
 // {"issue": ...} when sending the request.
 type IssueCreate struct {
-	ProjectID     string             `json:"project_id"`
-	TrackerID     int                `json:"tracker_id"`
-	Subject       string             `json:"subject"`
-	Description   string             `json:"description,omitempty"`
-	StatusID      int                `json:"status_id,omitempty"`
-	PriorityID    int                `json:"priority_id,omitempty"`
-	AssignedToID  string             `json:"assigned_to_id,omitempty"`
-	CategoryID    string             `json:"category_id,omitempty"`
-	ParentIssueID int                `json:"parent_issue_id,omitempty"`
-	StartDate     string             `json:"start_date,omitempty"`
-	DueDate       string             `json:"due_date,omitempty"`
-	DoneRatio     int                `json:"done_ratio,omitempty"`
-	CustomFields  []CustomFieldValue `json:"custom_fields,omitempty"`
-	Uploads       []UploadRef        `json:"uploads,omitempty"`
+	ProjectID      string             `json:"project_id"`
+	TrackerID      int                `json:"tracker_id"`
+	Subject        string             `json:"subject"`
+	Description    string             `json:"description,omitempty"`
+	StatusID       int                `json:"status_id,omitempty"`
+	PriorityID     int                `json:"priority_id,omitempty"`
+	AssignedToID   string             `json:"assigned_to_id,omitempty"`
+	CategoryID     string             `json:"category_id,omitempty"`
+	ParentIssueID  int                `json:"parent_issue_id,omitempty"`
+	StartDate      string             `json:"start_date,omitempty"`
+	DueDate        string             `json:"due_date,omitempty"`
+	DoneRatio      int                `json:"done_ratio,omitempty"`
+	CustomFields   []CustomFieldValue `json:"custom_fields,omitempty"`
+	Uploads        []UploadRef        `json:"uploads,omitempty"`
+	WatcherUserIDs []int              `json:"watcher_user_ids,omitempty"`
 }
 
 // IssueUpdate is the payload for PUT /issues/{id}.json. All fields are

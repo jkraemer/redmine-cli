@@ -1297,3 +1297,26 @@ func TestIssuesUpdate_NoCategoryFlag_OmitsField(t *testing.T) {
 		t.Errorf("category_id must be omitted when flag not set: %v", issue)
 	}
 }
+
+func TestIssuesCreate_Watchers_DryRunBody(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no server call expected in dry-run")
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create", "--project", "p", "--tracker", "1",
+		"--subject", "s", "--watcher", "3", "--watcher", "8"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(out.Bytes(), &got)
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	w, _ := issue["watcher_user_ids"].([]any)
+	if len(w) != 2 || w[0] != float64(3) || w[1] != float64(8) {
+		t.Errorf("watcher_user_ids=%v", issue["watcher_user_ids"])
+	}
+}
