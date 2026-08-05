@@ -1,4 +1,4 @@
-// Command redmine-cli is the Phase 1 read-only Redmine/Planio CLI.
+// Command redmine-cli is an agent-friendly CLI for the Redmine/Planio API.
 package main
 
 import "github.com/jkraemer/redmine-cli/internal/commands"

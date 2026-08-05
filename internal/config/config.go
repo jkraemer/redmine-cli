@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -142,6 +143,11 @@ func Load(path string) (*Config, error) {
 // API key, so loose permissions are worth surfacing even if the file
 // otherwise loads cleanly. Returns "" on Windows or for tight perms.
 func insecurePermWarning(path string, info os.FileInfo) string {
+	if runtime.GOOS == "windows" {
+		// Windows permission bits are synthetic; a Unix-style check would
+		// warn on every file.
+		return ""
+	}
 	mode := info.Mode().Perm()
 	if mode&0o077 == 0 {
 		return ""

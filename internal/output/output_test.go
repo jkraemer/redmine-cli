@@ -80,15 +80,15 @@ func TestSanitizeForTerminal(t *testing.T) {
 		in, want string
 	}{
 		{"plain ASCII", "plain ASCII"},
-		{"tab\there\nnewline", "tab\there\nnewline"},                          // \t and \n preserved
-		{"\x1b]52;c;PAYLOAD\x07", "]52;c;PAYLOAD"},                            // ESC and BEL stripped
-		{"\x1b[2J\x1b[H", "[2J[H"},                                            // CSI sequences stripped
-		{"bell\x07end", "bellend"},                                            // \x07
-		{"null\x00mid", "nullmid"},                                            // \x00
-		{"del\x7fmid", "delmid"},                                              // 0x7f
-		{"c1\x9bcsi", "c1csi"},                                                // 0x9b (8-bit CSI)
-		{"unicode é ✓", "unicode é ✓"},                                        // multibyte printable preserved
-		{"carriage\rreturn", "carriagereturn"},                                // \r stripped (overwrite risk)
+		{"tab\there\nnewline", "tab\there\nnewline"}, // \t and \n preserved
+		{"\x1b]52;c;PAYLOAD\x07", "]52;c;PAYLOAD"},   // ESC and BEL stripped
+		{"\x1b[2J\x1b[H", "[2J[H"},                   // CSI sequences stripped
+		{"bell\x07end", "bellend"},                   // \x07
+		{"null\x00mid", "nullmid"},                   // \x00
+		{"del\x7fmid", "delmid"},                     // 0x7f
+		{"c1\x9bcsi", "c1csi"},                       // 0x9b (8-bit CSI)
+		{"unicode é ✓", "unicode é ✓"},               // multibyte printable preserved
+		{"carriage\rreturn", "carriagereturn"},       // \r stripped (overwrite risk)
 	}
 	for _, tc := range cases {
 		if got := SanitizeForTerminal(tc.in); got != tc.want {

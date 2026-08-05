@@ -1,9 +1,8 @@
 // Client is a thin typed wrapper around the Redmine REST API. We do not use
-// the oapi-codegen-generated client directly because (a) the spec covers
-// many endpoints we do not need, (b) hand-rolling four endpoints is
+// an oapi-codegen-generated client because (a) the spec covers many
+// endpoints we do not need, (b) hand-rolling the few endpoints we use is
 // straightforward and avoids generated-code awkwardness for mixed-type
-// fields. The generated code lives in internal/client/ for reference and
-// future expansion.
+// fields (see api/SOURCE.md).
 package api
 
 import (
