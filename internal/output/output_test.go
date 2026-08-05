@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/mattn/go-runewidth"
 )
 
 func TestJSON_Object(t *testing.T) {
@@ -91,6 +93,31 @@ func TestSanitizeForTerminal(t *testing.T) {
 	for _, tc := range cases {
 		if got := SanitizeForTerminal(tc.in); got != tc.want {
 			t.Errorf("SanitizeForTerminal(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+// TestMarkdownTable_AlignsWideRunes: cells are padded by display width, not
+// byte length, so umlauts (multi-byte, width 1) and CJK (width 2) don't
+// break column alignment.
+func TestMarkdownTable_AlignsWideRunes(t *testing.T) {
+	var buf bytes.Buffer
+	err := MarkdownTable(&buf, []string{"Name", "Val"}, [][]string{
+		{"Käse", "1"},
+		{"日本語", "2"},
+		{"plain", "3"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d:\n%s", len(lines), buf.String())
+	}
+	want := runewidth.StringWidth(lines[0])
+	for i, ln := range lines[1:] {
+		if got := runewidth.StringWidth(ln); got != want {
+			t.Errorf("line %d display width %d, want %d:\n%s", i+1, got, want, buf.String())
 		}
 	}
 }

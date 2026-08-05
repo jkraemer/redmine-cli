@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/mattn/go-runewidth"
 )
 
 // JSON writes a 2-space-indented JSON document to w with a trailing newline.
@@ -60,14 +62,16 @@ func MarkdownTable(w io.Writer, headers []string, rows [][]string) error {
 		cleanRows[i] = cleanRow
 	}
 
+	// Widths are display widths (not byte lengths), so multi-byte and
+	// double-width runes don't break column alignment.
 	widths := make([]int, len(cleanHeaders))
 	for i, h := range cleanHeaders {
-		widths[i] = len(h)
+		widths[i] = runewidth.StringWidth(h)
 	}
 	for _, row := range cleanRows {
 		for i, c := range row {
-			if i < len(widths) && len(c) > widths[i] {
-				widths[i] = len(c)
+			if w := runewidth.StringWidth(c); i < len(widths) && w > widths[i] {
+				widths[i] = w
 			}
 		}
 	}
@@ -75,7 +79,7 @@ func MarkdownTable(w io.Writer, headers []string, rows [][]string) error {
 	writeRow := func(cells []string) error {
 		parts := make([]string, len(cells))
 		for i, c := range cells {
-			parts[i] = padRight(c, widths[i])
+			parts[i] = runewidth.FillRight(c, widths[i])
 		}
 		_, err := fmt.Fprintf(w, "| %s |\n", strings.Join(parts, " | "))
 		return err
@@ -97,11 +101,4 @@ func MarkdownTable(w io.Writer, headers []string, rows [][]string) error {
 		}
 	}
 	return nil
-}
-
-func padRight(s string, n int) string {
-	if len(s) >= n {
-		return s
-	}
-	return s + strings.Repeat(" ", n-len(s))
 }
