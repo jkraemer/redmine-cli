@@ -1220,3 +1220,27 @@ func TestIssuesList_NoQueryID_OmitsParam(t *testing.T) {
 		t.Errorf("URL should not include query_id when flag absent: %s", gotURL)
 	}
 }
+
+func TestIssuesCreate_Category_DryRunBody(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode (path=%s)", r.URL.Path)
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create", "--project", "p", "--tracker", "1",
+		"--subject", "s", "--category", "7"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	if issue["category_id"] != "7" {
+		t.Errorf("category_id=%v", issue["category_id"])
+	}
+}

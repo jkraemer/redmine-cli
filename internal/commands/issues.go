@@ -150,10 +150,10 @@ func renderIssueList(rc *runCtx, issues []api.Issue) error {
 
 func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	var (
-		project, subject, description, assignee, startDate, dueDate string
-		tracker, status, priority, parent, done                     int
-		confirm                                                     bool
-		cfStrs, attachStrs                                          []string
+		project, subject, description, assignee, category, startDate, dueDate string
+		tracker, status, priority, parent, done                               int
+		confirm                                                               bool
+		cfStrs, attachStrs                                                    []string
 	)
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -194,6 +194,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 				StatusID:      status,
 				PriorityID:    priority,
 				AssignedToID:  assignee,
+				CategoryID:    category,
 				ParentIssueID: parent,
 				StartDate:     startDate,
 				DueDate:       dueDate,
@@ -219,6 +220,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&subject, "subject", "", "Subject (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Description")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "Assignee user ID or 'me'")
+	cmd.Flags().StringVar(&category, "category", "", "Issue category ID (see: categories list)")
 	cmd.Flags().IntVar(&status, "status", 0, "Status ID")
 	cmd.Flags().IntVar(&priority, "priority", 0, "Priority ID")
 	cmd.Flags().IntVar(&parent, "parent", 0, "Parent issue ID")
