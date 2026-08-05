@@ -59,6 +59,60 @@ func TestReadOnly_BlocksConfirmedWrite(t *testing.T) {
 	}
 }
 
+func TestReadOnly_BlocksWatchersAdd(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+	p := writeReadOnlyConfig(t, srv.URL)
+
+	var out, errOut bytes.Buffer
+	root := Build(context.Background(), &out, &errOut)
+	root.SetArgs([]string{"--config", p, "issues", "watchers", "add", "1", "2", "--confirm"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrReadOnly) {
+		t.Errorf("err=%v, want wraps ErrReadOnly", err)
+	}
+	if code := exitCodeFor(err); code != 8 {
+		t.Errorf("exit code=%d, want 8", code)
+	}
+	if hits != 0 {
+		t.Errorf("server received %d requests, want 0 (no write must reach the server)", hits)
+	}
+}
+
+func TestReadOnly_BlocksWatchersRemove(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		hits++
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+	p := writeReadOnlyConfig(t, srv.URL)
+
+	var out, errOut bytes.Buffer
+	root := Build(context.Background(), &out, &errOut)
+	root.SetArgs([]string{"--config", p, "issues", "watchers", "remove", "1", "2", "--confirm"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrReadOnly) {
+		t.Errorf("err=%v, want wraps ErrReadOnly", err)
+	}
+	if code := exitCodeFor(err); code != 8 {
+		t.Errorf("exit code=%d, want 8", code)
+	}
+	if hits != 0 {
+		t.Errorf("server received %d requests, want 0 (no write must reach the server)", hits)
+	}
+}
+
 func TestReadOnly_AllowsPreview(t *testing.T) {
 	hits := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {

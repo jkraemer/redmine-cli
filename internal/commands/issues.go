@@ -55,6 +55,7 @@ func newIssuesCmd(rc *runCtx) *cobra.Command {
 	c.AddCommand(newIssuesGetCmd(rc))
 	c.AddCommand(newIssuesCreateCmd(rc))
 	c.AddCommand(newIssuesUpdateCmd(rc))
+	c.AddCommand(newIssuesWatchersCmd(rc))
 	return c
 }
 
