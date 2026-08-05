@@ -197,8 +197,8 @@ See `./redmine-cli --agent --help` for machine-readable help.
 
     make live-test REDMINE_VERSION=6.1
 
-This boots a real `redmine:<version>` container (via `podman` if installed,
-`docker` otherwise — override with `RUNTIME=docker`), waits for it to come up
+This boots a real `redmine:<version>` container (via `docker` if installed,
+`podman` otherwise — override with `RUNTIME=podman`), waits for it to come up
 (first boot runs DB migrations, which can take a couple of minutes), bootstraps
 an admin API key and an `e2e` project inside it, then runs the tests in `e2e/`
 (build tag `live`) against the real server through the real `redmine-cli`
