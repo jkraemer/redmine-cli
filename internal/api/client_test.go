@@ -959,3 +959,29 @@ func TestListCategories(t *testing.T) {
 		t.Errorf("expected nil assigned_to for category without default assignee")
 	}
 }
+
+func TestListCustomFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/custom_fields.json" {
+			t.Errorf("path=%s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"custom_fields":[{"id":5,"name":"Severity","customized_type":"issue","field_format":"list","is_required":true,"multiple":false,"possible_values":[{"value":"low","label":"Low"},{"value":"high","label":"High"}],"trackers":[{"id":1,"name":"Bug"}]}]}`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	res, err := c.ListCustomFields(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.CustomFields) != 1 {
+		t.Fatalf("got %d custom fields", len(res.CustomFields))
+	}
+	cf := res.CustomFields[0]
+	if cf.ID != 5 || cf.FieldFormat != "list" || !cf.IsRequired {
+		t.Errorf("parsed wrong: %+v", cf)
+	}
+	if len(cf.PossibleValues) != 2 || cf.PossibleValues[1].Label != "High" {
+		t.Errorf("possible_values wrong: %+v", cf.PossibleValues)
+	}
+}

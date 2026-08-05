@@ -373,3 +373,27 @@ type Category struct {
 type ListCategoriesResult struct {
 	IssueCategories []Category `json:"issue_categories"`
 }
+
+// CustomFieldPossibleValue is one allowed value of a list-format custom field.
+type CustomFieldPossibleValue struct {
+	Value string `json:"value"`
+	Label string `json:"label,omitempty"`
+}
+
+// CustomField is a custom field definition from /custom_fields.json.
+type CustomField struct {
+	ID             int                        `json:"id"`
+	Name           string                     `json:"name"`
+	CustomizedType string                     `json:"customized_type"`
+	FieldFormat    string                     `json:"field_format"`
+	IsRequired     bool                       `json:"is_required,omitempty"`
+	Multiple       bool                       `json:"multiple,omitempty"`
+	DefaultValue   string                     `json:"default_value,omitempty"`
+	PossibleValues []CustomFieldPossibleValue `json:"possible_values,omitempty"`
+	Trackers       []IDName                   `json:"trackers,omitempty"`
+}
+
+// ListCustomFieldsResult is the wrapped /custom_fields.json response.
+type ListCustomFieldsResult struct {
+	CustomFields []CustomField `json:"custom_fields"`
+}

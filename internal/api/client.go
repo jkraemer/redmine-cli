@@ -519,6 +519,16 @@ func (c *Client) ListActivities(ctx context.Context) (*ListActivitiesResult, err
 	return &res, nil
 }
 
+// ListCustomFields lists custom field definitions via /custom_fields.json.
+// Admin-only on most Redmine installs.
+func (c *Client) ListCustomFields(ctx context.Context) (*ListCustomFieldsResult, error) {
+	var res ListCustomFieldsResult
+	if err := c.doJSON(ctx, "/custom_fields.json", nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}
+
 // LogTime posts a new time entry. The payload is wrapped in
 // {"time_entry": ...} on the wire and the response is unwrapped.
 func (c *Client) LogTime(ctx context.Context, p TimeEntryCreate) (*TimeEntry, error) {
