@@ -187,6 +187,35 @@ When `--config` is omitted, the default
 
 See `./redmine-cli --agent --help` for machine-readable help.
 
+## Testing
+
+    make test          # hermetic unit/command tests, no network
+
+`make test` is what runs on every push (see below) and needs nothing but Go.
+
+### Live end-to-end suite
+
+    make live-test REDMINE_VERSION=6.1
+
+This boots a real `redmine:<version>` container (via `podman` if installed,
+`docker` otherwise — override with `RUNTIME=docker`), waits for it to come up
+(first boot runs DB migrations, which can take a couple of minutes), bootstraps
+an admin API key and an `e2e` project inside it, then runs the tests in `e2e/`
+(build tag `live`) against the real server through the real `redmine-cli`
+binary — no mocks. The container is removed on exit.
+
+Useful overrides:
+
+    PORT=3001 make live-test REDMINE_VERSION=6.1   # if 3000 is taken
+    KEEP=1 make live-test REDMINE_VERSION=6.1      # leave the container running for debugging
+
+With `KEEP=1`, `scripts/live/run.sh` prints the container name and port
+instead of tearing it down, so you can poke at the instance or re-run
+`go test -tags live ./e2e -v` by hand against it.
+
+CI (`.github/workflows/ci.yml`) runs the hermetic suite plus the live suite
+against Redmine 5.1, 6.1, and 7.0 on every push and pull request.
+
 ## Releases
 
 Tagging and pushing to the `gh` remote cuts a release:

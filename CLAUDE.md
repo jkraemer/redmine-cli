@@ -9,6 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     make fmt vet
     go test ./internal/commands -run TestIssuesUpdate   # single test
     go test ./internal/commands -run TestIssuesUpdate/sub_name
+    make live-test REDMINE_VERSION=6.1                  # e2e/ against a real container (see README)
+
+`e2e/` is gated behind `-tags live` (`go test -tags live ./e2e`) so `go build
+./...` and the hermetic `make test` never require a live Redmine.
 
 `make generate` is intentionally a no-op — see `api/SOURCE.md`. The
 OpenAPI spec under `api/` is vendored documentation; oapi-codegen is
