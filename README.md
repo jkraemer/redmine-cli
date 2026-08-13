@@ -4,19 +4,46 @@ Agent-friendly CLI for the Redmine/Planio API.
 
 ## Install
 
-As an agent skill (installs SKILL.md into your agents' skill
-directories, then downloads the checksum-verified release binary for
-your platform):
+### As an agent skill
+
+This installs `SKILL.md` into your agents' skill directories, then
+downloads the checksum-verified release binary for your platform:
 
     npx skills add -g jkraemer/redmine-cli
     ~/.agents/skills/redmine-cli/bootstrap.sh
 
-Binary only: grab a platform archive from
+`-g` installs into `~/.agents/skills/redmine-cli` and symlinks it into
+`~/.claude/skills/`. Don't omit it: run inside a git repository without
+`-g`, `npx skills add` installs project-locally instead, creating an
+`./.agents/` directory in that repo.
+
+The binary is downloaded separately from `SKILL.md` because skill
+distribution channels ship text, not per-platform binaries — so an
+update is two steps as well:
+
+    npx skills update
+    ~/.agents/skills/redmine-cli/bootstrap.sh
+
+`bootstrap.sh` fetches the latest release by default; pass a version
+(`bootstrap.sh 0.1.0`) to pin one. It covers Linux and macOS; on
+Windows, unpack the release zip next to `SKILL.md` by hand.
+
+Without the skills CLI, `make dist` builds the same drop-in folder
+(binary + `SKILL.md` + `bootstrap.sh`) into `dist/redmine-cli/` — copy
+that into `~/.claude/skills/`.
+
+A skill install does **not** put `redmine-cli` on your `$PATH`; the
+skill invokes the binary by its full path. Install the binary
+separately if you also want to run it yourself.
+
+### Binary only
+
+Grab a platform archive from
 [GitHub Releases](https://github.com/jkraemer/redmine-cli/releases), or
 
     go install github.com/jkraemer/redmine-cli/cmd/redmine-cli@latest
 
-## Build
+### Build from source
 
     make build
 
