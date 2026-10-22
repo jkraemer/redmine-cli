@@ -125,8 +125,12 @@ Notes:
 | Run a saved query | `redmine-cli issues list --query-id 42 --all` |
 | Get full issue with journals | `redmine-cli issues get 1459 --include journals,attachments` |
 | Get issue with watchers | `redmine-cli issues get 1459 --include watchers` |
+| Get issue with checklist items | `redmine-cli issues get 1459 --include checklists` |
 | Download attachment | `redmine-cli attachments download 42` |
 | Save attachment to a path | `redmine-cli attachments download 42 -o /tmp/foo.png` |
+
+Notes:
+- `--include checklists` needs the redmine_checklists plugin. Each item has `subject` and `is_done`. A 404 (exit 2) on an issue that exists means the plugin is missing or you lack the "View checklists" permission. Section headers are indistinguishable from undone items.
 
 ## Quick Reference — Lookups
 

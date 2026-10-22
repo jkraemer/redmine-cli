@@ -329,6 +329,19 @@ func (c *Client) GetIssue(ctx context.Context, id int, p *GetIssueParams) (*Issu
 	return &wrapper.Issue, nil
 }
 
+// ListChecklists fetches an issue's checklist items via the
+// redmine_checklists plugin endpoint /issues/{id}/checklists.json. On
+// servers without the plugin this returns a 404 *Error.
+func (c *Client) ListChecklists(ctx context.Context, issueID int) ([]ChecklistItem, error) {
+	var wrapper struct {
+		Checklists []ChecklistItem `json:"checklists"`
+	}
+	if err := c.doJSON(ctx, fmt.Sprintf("/issues/%d/checklists.json", issueID), nil, &wrapper); err != nil {
+		return nil, err
+	}
+	return wrapper.Checklists, nil
+}
+
 // GetAttachment fetches metadata for an attachment and returns an open
 // reader for the file content. The caller must close the body.
 //

@@ -1405,3 +1405,128 @@ func TestIssuesGet_Markdown_ShowsCustomFields(t *testing.T) {
 		t.Errorf("multi-value field should join values:\n%s", s)
 	}
 }
+
+// checklistServer serves a minimal issue #7 plus its checklist and records
+// the include param Redmine saw on the issue request.
+func checklistServer(t *testing.T, seenInclude *string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/issues/7.json":
+			*seenInclude = r.URL.Query().Get("include")
+			_, _ = w.Write([]byte(`{"issue":{"id":7,"subject":"Subj","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"}}}`))
+		case "/issues/7/checklists.json":
+			_, _ = w.Write([]byte(`{"checklists":[{"id":1,"issue_id":7,"subject":"Write tests","is_done":true,"position":1},{"id":2,"issue_id":7,"subject":"Ship \u001b[2Jit","is_done":false,"position":2}],"total_count":2}`))
+		default:
+			t.Errorf("unexpected request %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}
+}
+
+func TestIssuesGet_IncludeChecklists_JSON(t *testing.T) {
+	var seenInclude string
+	c, stop := newClientForTest(t, checklistServer(t, &seenInclude))
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7", "--include", "journals,checklists"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if seenInclude != "journals" {
+		t.Errorf("checklists must not be forwarded to Redmine's include, got %q", seenInclude)
+	}
+	var got struct {
+		Issue struct {
+			Checklists []map[string]any `json:"checklists"`
+		} `json:"issue"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	items := got.Issue.Checklists
+	if len(items) != 2 {
+		t.Fatalf("want 2 checklist items, got %d:\n%s", len(items), out.String())
+	}
+	if items[0]["subject"] != "Write tests" || items[0]["is_done"] != true {
+		t.Errorf("first item wrong: %v", items[0])
+	}
+	if done, ok := items[1]["is_done"]; !ok || done != false {
+		t.Errorf("undone item must carry is_done=false explicitly: %v", items[1])
+	}
+}
+
+func TestIssuesGet_IncludeChecklists_Markdown(t *testing.T) {
+	var seenInclude string
+	c, stop := newClientForTest(t, checklistServer(t, &seenInclude))
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7", "--include", "checklists"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if seenInclude != "" {
+		t.Errorf("no include should be forwarded to Redmine, got %q", seenInclude)
+	}
+	got := out.String()
+	for _, want := range []string{"## Checklist", "- [x] Write tests", "- [ ] Ship [2Jit"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("markdown missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "\x1b") {
+		t.Errorf("output contains raw control byte:\n%s", got)
+	}
+}
+
+func TestIssuesGet_WithoutChecklistsInclude_SkipsChecklistRequest(t *testing.T) {
+	var seenInclude string
+	handler := checklistServer(t, &seenInclude)
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/issues/7/checklists.json" {
+			t.Errorf("checklists must only be fetched when included")
+		}
+		handler(w, r)
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "checklists") {
+		t.Errorf("checklists key should be absent:\n%s", out.String())
+	}
+}
+
+func TestIssuesGet_IncludeChecklists_PluginMissingIsNotFound(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/issues/7/checklists.json" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"issue":{"id":7,"subject":"Subj","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"}}}`))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7", "--include", "checklists"})
+	err := root.Execute()
+	if code := exitCodeFor(err); code != 2 {
+		t.Errorf("want exit code 2 (not found), got %d (err=%v)", code, err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("no issue output expected on failure:\n%s", out.String())
+	}
+}

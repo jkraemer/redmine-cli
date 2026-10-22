@@ -6,6 +6,11 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `issues get --include checklists` returns checklist items with their
+  done state (requires the redmine_checklists plugin)
+
 ## [0.1.0] - 2026-08-05
 
 Initial release.

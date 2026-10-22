@@ -82,6 +82,19 @@ type Issue struct {
 	Attachments  []Attachment       `json:"attachments,omitempty"`
 	Watchers     []IDName           `json:"watchers,omitempty"`
 	CustomFields []CustomFieldValue `json:"custom_fields,omitempty"`
+	Checklists   []ChecklistItem    `json:"checklists,omitempty"`
+}
+
+// ChecklistItem is one entry of an issue's checklist, provided by the
+// redmine_checklists plugin. The plugin's API does not expose whether an
+// item is a section header, so sections appear as regular undone items.
+type ChecklistItem struct {
+	ID        int    `json:"id"`
+	Subject   string `json:"subject"`
+	IsDone    bool   `json:"is_done"`
+	Position  int    `json:"position"`
+	CreatedAt string `json:"created_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
 }
 
 // Journal is one entry in an issue's history.

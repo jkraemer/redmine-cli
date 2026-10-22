@@ -1048,3 +1048,40 @@ func TestRemoveWatcher(t *testing.T) {
 		t.Error("server not called")
 	}
 }
+
+func TestListChecklists(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/issues/7/checklists.json" {
+			t.Errorf("path=%s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"checklists":[{"id":1,"issue_id":7,"subject":"Write tests","is_done":true,"position":1,"created_at":"2026-10-01T10:00:00Z","updated_at":"2026-10-02T10:00:00Z"},{"id":2,"issue_id":7,"subject":"Ship it","is_done":false,"position":2,"created_at":"2026-10-01T10:00:00Z","updated_at":"2026-10-01T10:00:00Z"}],"total_count":2}`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	items, err := c.ListChecklists(context.Background(), 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("got %d items", len(items))
+	}
+	if items[0].ID != 1 || items[0].Subject != "Write tests" || !items[0].IsDone || items[0].Position != 1 {
+		t.Errorf("first item not decoded: %+v", items[0])
+	}
+	if items[1].Subject != "Ship it" || items[1].IsDone {
+		t.Errorf("second item not decoded: %+v", items[1])
+	}
+}
+
+func TestListChecklists_NotFoundWithoutPlugin(t *testing.T) {
+	srv := newTestServer(t, 404, `{}`)
+	defer srv.Close()
+
+	c := New(srv.URL, "test-key", srv.Client())
+	_, err := c.ListChecklists(context.Background(), 7)
+	var apiErr *Error
+	if err == nil || !errors.As(err, &apiErr) || apiErr.Status != 404 {
+		t.Fatalf("expected 404 *Error, got %v", err)
+	}
+}

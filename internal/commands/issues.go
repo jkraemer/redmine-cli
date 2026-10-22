@@ -121,15 +121,38 @@ func newIssuesGetCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid issue id %q", args[0])
 			}
-			issue, err := rc.client.GetIssue(rc.ctx(), id, &api.GetIssueParams{Include: includes})
+			// Checklists come from the redmine_checklists plugin's own
+			// endpoint, not from Redmine's include param.
+			serverIncludes, withChecklists := splitChecklistsInclude(includes)
+			issue, err := rc.client.GetIssue(rc.ctx(), id, &api.GetIssueParams{Include: serverIncludes})
 			if err != nil {
 				return err
+			}
+			if withChecklists {
+				if issue.Checklists, err = rc.client.ListChecklists(rc.ctx(), id); err != nil {
+					return err
+				}
 			}
 			return renderIssueDetail(rc, issue)
 		},
 	}
-	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, watchers")
+	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, watchers, checklists (requires the redmine_checklists plugin)")
 	return cmd
+}
+
+// splitChecklistsInclude removes "checklists" from includes and reports
+// whether it was present.
+func splitChecklistsInclude(includes []string) ([]string, bool) {
+	var rest []string
+	found := false
+	for _, inc := range includes {
+		if inc == "checklists" {
+			found = true
+			continue
+		}
+		rest = append(rest, inc)
+	}
+	return rest, found
 }
 
 func renderIssueList(rc *runCtx, issues []api.Issue) error {
@@ -412,6 +435,16 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 			}
 		}
 		fmt.Fprintf(&b, "\n%s\n", clean(is.Description))
+		if len(is.Checklists) > 0 {
+			fmt.Fprintf(&b, "\n## Checklist\n\n")
+			for _, item := range is.Checklists {
+				mark := " "
+				if item.IsDone {
+					mark = "x"
+				}
+				fmt.Fprintf(&b, "- [%s] %s\n", mark, clean(item.Subject))
+			}
+		}
 		if len(is.Journals) > 0 {
 			fmt.Fprintf(&b, "\n## Journals\n\n")
 			for _, j := range is.Journals {
