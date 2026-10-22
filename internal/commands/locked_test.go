@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -279,5 +280,115 @@ func TestLocked_VersionWorks(t *testing.T) {
 
 	if _, err := runLocked(t, "version"); err != nil {
 		t.Errorf("version: %v (exit %d)", err, exitCodeFor(err))
+	}
+}
+
+// agentHelp runs the real root command with args and decodes the
+// --agent --help JSON it prints.
+func agentHelp(t *testing.T, args ...string) map[string]any {
+	t.Helper()
+	out, err := runLocked(t, args...)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	return doc
+}
+
+func blockedSubcommands(doc map[string]any) map[string]bool {
+	blocked := map[string]bool{}
+	for _, s := range doc["subcommands"].([]any) {
+		sc := s.(map[string]any)
+		b, _ := sc["blocked"].(bool)
+		blocked[sc["name"].(string)] = b
+	}
+	return blocked
+}
+
+func TestLocked_AgentHelpMarksBlocked(t *testing.T) {
+	srv, _ := newLockedServer(t)
+	lockedEnv(t, srv.URL)
+
+	doc := agentHelp(t, "issues", "--agent", "--help")
+	if doc["locked"] != true || doc["read_only"] != true {
+		t.Fatalf("locked/read_only = %v/%v, want true/true", doc["locked"], doc["read_only"])
+	}
+	blocked := blockedSubcommands(doc)
+	for _, name := range []string{"create", "update"} {
+		if !blocked[name] {
+			t.Errorf("%s should be blocked", name)
+		}
+	}
+	for _, name := range []string{"list", "get"} {
+		if blocked[name] {
+			t.Errorf("%s should not be blocked", name)
+		}
+	}
+	wantNote := "locked mode (redmine-safe) is active: write and auth commands are unavailable and exit 8; --config is refused; attachments download writes to stdout only"
+	notes, _ := doc["notes"].([]any)
+	found := false
+	for _, n := range notes {
+		found = found || n == wantNote
+	}
+	if !found {
+		t.Errorf("notes %v missing locked note", notes)
+	}
+
+	leaf := agentHelp(t, "issues", "create", "--agent", "--help")
+	if leaf["blocked"] != true {
+		t.Errorf("issues create leaf should be blocked: %v", leaf)
+	}
+}
+
+func TestLocked_AgentHelpAuthBlocked(t *testing.T) {
+	srv, _ := newLockedServer(t)
+	lockedEnv(t, srv.URL)
+
+	doc := agentHelp(t, "--agent", "--help")
+	if !blockedSubcommands(doc)["auth"] {
+		t.Error("auth should be blocked")
+	}
+	leaf := agentHelp(t, "auth", "login", "--agent", "--help")
+	if leaf["blocked"] != true {
+		t.Errorf("auth login leaf should be blocked: %v", leaf)
+	}
+}
+
+func TestLocked_AgentHelpIgnoresConfigFlag(t *testing.T) {
+	srv, _ := newLockedServer(t)
+	lockedEnv(t, srv.URL)
+	p := filepath.Join(t.TempDir(), "other.toml")
+	if err := os.WriteFile(p, []byte("read_only = false\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	doc := agentHelp(t, "-c", p, "issues", "--agent", "--help")
+	if doc["read_only"] != true || doc["locked"] != true {
+		t.Fatalf("read_only/locked = %v/%v, want true/true", doc["read_only"], doc["locked"])
+	}
+}
+
+func TestLocked_AgentHelpInvalidValueFailsClosed(t *testing.T) {
+	srv, _ := newLockedServer(t)
+	lockedEnv(t, srv.URL)
+	t.Setenv("REDMINE_LOCKED", "yes")
+
+	doc := agentHelp(t, "issues", "--agent", "--help")
+	if doc["locked"] != true {
+		t.Fatalf("locked = %v, want true", doc["locked"])
+	}
+}
+
+func TestAgentHelp_NotLockedOmitsField(t *testing.T) {
+	srv, _ := newLockedServer(t)
+	lockedEnv(t, srv.URL)
+	t.Setenv("REDMINE_LOCKED", "")
+
+	doc := agentHelp(t, "issues", "--agent", "--help")
+	if _, ok := doc["locked"]; ok {
+		t.Errorf("locked key present in normal mode: %v", doc["locked"])
 	}
 }

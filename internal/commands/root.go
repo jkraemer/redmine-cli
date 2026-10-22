@@ -76,7 +76,14 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	// nesting level.
 	helpFunc := func(cmd *cobra.Command, _ []string) {
 		if rc.agentHelp {
-			_ = agenthelp.Render(rc.out, cmd, config.ReadOnly(rc.configPath))
+			// Cobra skips PersistentPreRunE for --help, so locked mode is
+			// decided here too. An unparseable REDMINE_LOCKED fails closed, and
+			// in locked mode --config is never read.
+			if locked, err := config.Locked(); locked || err != nil {
+				_ = agenthelp.Render(rc.out, cmd, true, true)
+				return
+			}
+			_ = agenthelp.Render(rc.out, cmd, config.ReadOnly(rc.configPath), false)
 			return
 		}
 		// Fall back to default-style help on stderr: cobra's help template

@@ -34,6 +34,7 @@ type Help struct {
 	Long           string       `json:"long,omitempty"`
 	Usage          string       `json:"usage"`
 	ReadOnly       bool         `json:"read_only,omitempty"`
+	Locked         bool         `json:"locked,omitempty"`
 	Blocked        bool         `json:"blocked,omitempty"`
 	Flags          []Flag       `json:"flags"`
 	InheritedFlags []Flag       `json:"inherited_flags,omitempty"`
@@ -45,8 +46,9 @@ type Help struct {
 // document advertises that read-only mode is active: every command carries
 // read_only, and write commands (those annotated "write") are marked blocked
 // with an explanatory note, so an agent discovers the restriction without
-// running the command.
-func Render(w io.Writer, cmd *cobra.Command, readOnly bool) error {
+// running the command. When locked is true the document also carries locked,
+// and write and auth commands are marked blocked.
+func Render(w io.Writer, cmd *cobra.Command, readOnly, locked bool) error {
 	h := Help{
 		Command:  cmd.Name(),
 		Path:     cmd.CommandPath(),
@@ -54,6 +56,7 @@ func Render(w io.Writer, cmd *cobra.Command, readOnly bool) error {
 		Long:     cmd.Long,
 		Usage:    cmd.UseLine(),
 		ReadOnly: readOnly,
+		Locked:   locked,
 	}
 	cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
 		h.Flags = append(h.Flags, flagToJSON(f))
@@ -69,7 +72,7 @@ func Render(w io.Writer, cmd *cobra.Command, readOnly bool) error {
 			Name:    c.Name(),
 			Short:   c.Short,
 			Path:    c.CommandPath(),
-			Blocked: readOnly && IsWrite(c),
+			Blocked: (readOnly && IsWrite(c)) || (locked && isLockedOut(c)),
 		})
 	}
 	if notes, ok := cmd.Annotations["agent-notes"]; ok && notes != "" {
@@ -78,6 +81,13 @@ func Render(w io.Writer, cmd *cobra.Command, readOnly bool) error {
 	if readOnly && IsWrite(cmd) {
 		h.Blocked = true
 		h.Notes = append(h.Notes, "read-only mode is active: this write command is blocked; running it with --confirm exits 8")
+	}
+	if locked {
+		h.Notes = append(h.Notes, "locked mode (redmine-safe) is active: write and auth commands are unavailable and exit 8; --config is refused; attachments download writes to stdout only")
+		if isLockedOut(cmd) {
+			h.Blocked = true
+			h.Notes = append(h.Notes, "locked mode is active: this command is unavailable and exits 8")
+		}
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -89,6 +99,11 @@ func Render(w io.Writer, cmd *cobra.Command, readOnly bool) error {
 // "write" annotation the command layer sets on every --confirm command.
 func IsWrite(cmd *cobra.Command) bool {
 	return cmd.Annotations["write"] == "true"
+}
+
+// isLockedOut reports whether locked mode refuses cmd outright.
+func isLockedOut(cmd *cobra.Command) bool {
+	return IsWrite(cmd) || IsAuth(cmd)
 }
 
 // IsAuth reports whether cmd is the top-level auth command or any of its

@@ -20,7 +20,7 @@ func writeCmd() *cobra.Command {
 func renderJSON(t *testing.T, cmd *cobra.Command, readOnly bool) map[string]any {
 	t.Helper()
 	var buf bytes.Buffer
-	if err := Render(&buf, cmd, readOnly); err != nil {
+	if err := Render(&buf, cmd, readOnly, false); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any

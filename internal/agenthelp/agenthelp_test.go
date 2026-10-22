@@ -23,7 +23,7 @@ func TestRender_RootCommand(t *testing.T) {
 	root.AddCommand(sub)
 
 	var buf bytes.Buffer
-	if err := Render(&buf, root, false); err != nil {
+	if err := Render(&buf, root, false, false); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any
@@ -51,7 +51,7 @@ func TestRender_Subcommand(t *testing.T) {
 	root.AddCommand(issues)
 
 	var buf bytes.Buffer
-	if err := Render(&buf, list, false); err != nil {
+	if err := Render(&buf, list, false, false); err != nil {
 		t.Fatal(err)
 	}
 	var got map[string]any
