@@ -74,11 +74,18 @@ func writeLockedConfig(t *testing.T, contents string) {
 // the command error.
 func runLocked(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	out, _, err := runLockedWithStderr(t, args...)
+	return out, err
+}
+
+// runLockedWithStderr is runLocked that also returns stderr.
+func runLockedWithStderr(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
 	var out, errOut bytes.Buffer
 	root := Build(context.Background(), &out, &errOut)
 	root.SetArgs(args)
 	err := root.Execute()
-	return out.String(), err
+	return out.String(), errOut.String(), err
 }
 
 // assertLockedRefusal checks that err is a locked-mode refusal (exit 8).
@@ -132,10 +139,13 @@ func TestLocked_RefusesWriteWithoutConfirm(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := runLocked(t, "issues", "update", "7", "--notes-file", notes)
+	out, errOut, err := runLockedWithStderr(t, "issues", "update", "7", "--notes-file", notes)
 	assertLockedRefusal(t, err)
 	if strings.Contains(out, "SECRET") {
-		t.Errorf("output leaks notes file content:\n%s", out)
+		t.Errorf("stdout leaks notes file content:\n%s", out)
+	}
+	if strings.Contains(errOut, "SECRET") {
+		t.Errorf("stderr leaks notes file content:\n%s", errOut)
 	}
 	if n := hits.Load(); n != 0 {
 		t.Errorf("hits=%d, want 0", n)
@@ -166,13 +176,16 @@ func TestLocked_RefusesEveryWriteCommand(t *testing.T) {
 }
 
 func TestLocked_RefusesAuth(t *testing.T) {
-	for _, sub := range []string{"status", "logout"} {
+	for _, sub := range []string{"login", "status", "logout"} {
 		t.Run(sub, func(t *testing.T) {
-			srv, _ := newLockedServer(t)
+			srv, hits := newLockedServer(t)
 			lockedEnv(t, srv.URL)
 
 			_, err := runLocked(t, "auth", sub)
 			assertLockedRefusal(t, err)
+			if n := hits.Load(); n != 0 {
+				t.Errorf("hits=%d, want 0", n)
+			}
 		})
 	}
 }
@@ -280,6 +293,22 @@ func TestLocked_VersionWorks(t *testing.T) {
 
 	if _, err := runLocked(t, "version"); err != nil {
 		t.Errorf("version: %v (exit %d)", err, exitCodeFor(err))
+	}
+}
+
+func TestLocked_PlainHelpWorks(t *testing.T) {
+	srv, hits := newLockedServer(t)
+	lockedEnv(t, srv.URL)
+
+	out, err := runLocked(t, "--help")
+	if err != nil {
+		t.Fatalf("--help: %v (exit %d)", err, exitCodeFor(err))
+	}
+	if !strings.Contains(out, "Usage:") {
+		t.Errorf("--help output lacks usage:\n%s", out)
+	}
+	if n := hits.Load(); n != 0 {
+		t.Errorf("hits=%d, want 0", n)
 	}
 }
 
