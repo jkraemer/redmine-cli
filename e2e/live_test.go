@@ -583,3 +583,44 @@ func TestExitCodes(t *testing.T) {
 		}
 	})
 }
+
+func TestLockedMode(t *testing.T) {
+	xdg := t.TempDir()
+	cfgDir := filepath.Join(xdg, "redmine-cli")
+	if err := os.MkdirAll(cfgDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := fmt.Sprintf("url = %q\napi_key = %q\n", os.Getenv("REDMINE_URL"), os.Getenv("REDMINE_API_KEY"))
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.toml"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The env URL/key are bogus on purpose: if locked mode honored them, the
+	// read would fail with exit 6 or 3 instead of succeeding via the file.
+	env := map[string]string{
+		"XDG_CONFIG_HOME": xdg,
+		"REDMINE_LOCKED":  "1",
+		"REDMINE_URL":     "http://127.0.0.1:1",
+		"REDMINE_API_KEY": "bogus",
+	}
+
+	t.Run("read-uses-config-file", func(t *testing.T) {
+		_, errOut, code := runWithEnv(t, env, "users", "me")
+		if code != 0 {
+			t.Errorf("exit code=%d, want 0; stderr=%q", code, errOut)
+		}
+	})
+
+	t.Run("write-refused-without-confirm", func(t *testing.T) {
+		_, _, code := runWithEnv(t, env, "issues", "create", "--project", project, "--subject", "x")
+		if code != 8 {
+			t.Errorf("exit code=%d, want 8", code)
+		}
+	})
+
+	t.Run("config-flag-refused", func(t *testing.T) {
+		_, _, code := runWithEnv(t, env, "-c", "/dev/null", "issues", "list")
+		if code != 8 {
+			t.Errorf("exit code=%d, want 8", code)
+		}
+	})
+}
