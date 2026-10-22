@@ -72,6 +72,20 @@ var ErrMissingAPIKey = errors.New("redmine API key not configured (set REDMINE_A
 // file. If path is empty, falls back to the default discovery path. If path
 // is non-empty and the file is missing, returns an error.
 func Load(path string) (*Config, error) {
+	return load(path, false)
+}
+
+// load is the shared implementation behind Load and LoadLocked. In locked
+// mode the credential, OAuth and read-only env vars are ignored so the
+// config file is the only source, parse errors never echo file content, and
+// the legacy token file is never read.
+func load(path string, locked bool) (*Config, error) {
+	// env reads a variable that locked mode must not take from the caller's
+	// environment.
+	env := os.Getenv
+	if locked {
+		env = func(string) string { return "" }
+	}
 	var fc fileConfig
 	cfg := &Config{}
 	resolved := path
@@ -85,6 +99,9 @@ func Load(path string) (*Config, error) {
 		switch {
 		case err == nil:
 			if _, err := toml.DecodeFile(resolved, &fc); err != nil {
+				if locked {
+					return nil, fmt.Errorf("parse %s: invalid config file (details hidden in locked mode)", resolved)
+				}
 				return nil, fmt.Errorf("parse %s: %w", resolved, err)
 			}
 			if w := insecurePermWarning(resolved, info); w != "" {
@@ -100,18 +117,18 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	cfg.URL = firstNonEmpty(os.Getenv("REDMINE_URL"), fc.URL)
-	cfg.APIKey = firstNonEmpty(os.Getenv("REDMINE_API_KEY"), fc.APIKey)
-	cfg.OAuthClientID = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_ID"), fc.OAuthClientID)
-	cfg.OAuthClientSecret = firstNonEmpty(os.Getenv("REDMINE_OAUTH_CLIENT_SECRET"), fc.OAuthClientSecret)
-	cfg.OAuthScopes = resolveScopes(os.Getenv("REDMINE_OAUTH_SCOPES"), fc.OAuthScopes)
+	cfg.URL = firstNonEmpty(env("REDMINE_URL"), fc.URL)
+	cfg.APIKey = firstNonEmpty(env("REDMINE_API_KEY"), fc.APIKey)
+	cfg.OAuthClientID = firstNonEmpty(env("REDMINE_OAUTH_CLIENT_ID"), fc.OAuthClientID)
+	cfg.OAuthClientSecret = firstNonEmpty(env("REDMINE_OAUTH_CLIENT_SECRET"), fc.OAuthClientSecret)
+	cfg.OAuthScopes = resolveScopes(env("REDMINE_OAUTH_SCOPES"), fc.OAuthScopes)
 	cfg.DefaultFormat = firstNonEmpty(os.Getenv("REDMINE_FORMAT"), fc.DefaultFormat, "json")
 
-	ro, err := resolveReadOnly(os.Getenv("REDMINE_READ_ONLY"), fc.ReadOnly)
+	ro, err := resolveReadOnly(env("REDMINE_READ_ONLY"), fc.ReadOnly)
 	if err != nil {
 		return nil, err
 	}
-	cfg.ReadOnly = ro
+	cfg.ReadOnly = ro || locked
 
 	if fc.Token != nil && fc.Token.AccessToken != "" {
 		cfg.Token = &auth.Token{
@@ -123,7 +140,7 @@ func Load(path string) (*Config, error) {
 		}
 	}
 
-	if cfg.Token == nil && cfg.Path == defaultConfigPath() {
+	if !locked && cfg.Token == nil && cfg.Path == defaultConfigPath() {
 		if leg := readLegacyToken(); leg != nil {
 			cfg.Token = leg
 		}
