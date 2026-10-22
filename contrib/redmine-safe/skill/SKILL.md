@@ -40,10 +40,10 @@ cannot write to the instance.
 
 ## Command reference
 
-Read commands behave exactly as in the redmine-cli skill: see
-`skills/redmine-cli/SKILL.md` (the Read, Lookups, and Search sections) and
-substitute `redmine-safe` for `redmine-cli`. Ignore its Write, Configuration,
-and OAuth sections.
+Read commands behave exactly as in the redmine-cli skill: see its Read,
+Lookups, Search, and Wiki sections (the `wiki list` and `wiki get` parts)
+and substitute `redmine-safe` for `redmine-cli`. Ignore its Write,
+Configuration, and OAuth sections, and `wiki put`.
 
 ## Exit Codes
 
