@@ -6,6 +6,12 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A missing or unreadable config file exits 3 (config error) instead of 6
+  (network error); an invalid config file exits 3 instead of 1. Local file
+  errors elsewhere (e.g. a missing `--attach` file) exit 1 instead of 6
+
 ## [0.3.0] - 2026-10-22
 
 ### Added

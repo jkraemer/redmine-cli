@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -270,7 +272,8 @@ func exitCodeFor(err error) int {
 		return 8
 	}
 	if errors.Is(err, config.ErrMissingURL) || errors.Is(err, config.ErrMissingAPIKey) ||
-		errors.Is(err, config.ErrInvalidLocked) || errors.Is(err, config.ErrLockedNeedsAPIKey) {
+		errors.Is(err, config.ErrInvalidLocked) || errors.Is(err, config.ErrLockedNeedsAPIKey) ||
+		errors.Is(err, config.ErrConfigFile) {
 		return 3
 	}
 	var apiErr *api.Error
@@ -289,10 +292,13 @@ func exitCodeFor(err error) int {
 			return 7
 		}
 	}
-	// network-style errors: detect by url.Error type
-	type netErr interface{ Timeout() bool }
-	var ne netErr
-	if errors.As(err, &ne) {
+	// network-style errors: the HTTP client wraps transport failures in
+	// *url.Error; a failure while streaming a response body surfaces as a
+	// bare *net.OpError. Matching on Timeout() or net.Error instead would
+	// also catch local file errors (syscall.Errno implements both).
+	var ue *url.Error
+	var oe *net.OpError
+	if errors.As(err, &ue) || errors.As(err, &oe) {
 		return 6
 	}
 	return 1

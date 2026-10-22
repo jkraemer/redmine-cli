@@ -269,7 +269,7 @@ tokens never leak between instances:
 | 0 | OK |
 | 1 | Usage error / API validation error (4xx other than below) |
 | 2 | Not found (404) |
-| 3 | Auth error / missing config |
+| 3 | Auth error / missing, unreadable, or invalid config |
 | 4 | Forbidden (403) |
 | 5 | Rate limited (429) |
 | 6 | Network error |

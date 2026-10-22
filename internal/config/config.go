@@ -68,6 +68,11 @@ var ErrMissingURL = errors.New("redmine URL not configured (set REDMINE_URL or u
 // ErrMissingAPIKey is returned when no API key can be resolved.
 var ErrMissingAPIKey = errors.New("redmine API key not configured (set REDMINE_API_KEY or api_key in config.toml)")
 
+// ErrConfigFile is wrapped by every error about finding, reading, or
+// parsing the config file, so callers can report it as a config problem.
+// Its text is the prefix of those messages ("config file <path>: ...").
+var ErrConfigFile = errors.New("config file")
+
 // Load resolves configuration from env vars (highest priority) then a TOML
 // file. If path is empty, falls back to the default discovery path. If path
 // is non-empty and the file is missing, returns an error.
@@ -100,20 +105,20 @@ func load(path string, locked bool) (*Config, error) {
 		case err == nil:
 			if _, err := toml.DecodeFile(resolved, &fc); err != nil {
 				if locked {
-					return nil, fmt.Errorf("parse %s: invalid config file (details hidden in locked mode)", resolved)
+					return nil, fmt.Errorf("%w %s: unreadable or invalid (details hidden in locked mode)", ErrConfigFile, resolved)
 				}
-				return nil, fmt.Errorf("parse %s: %w", resolved, err)
+				return nil, fmt.Errorf("%w %s: %w", ErrConfigFile, resolved, err)
 			}
 			if w := insecurePermWarning(resolved, info); w != "" {
 				cfg.Warnings = append(cfg.Warnings, w)
 			}
 		case os.IsNotExist(err):
 			if path != "" {
-				return nil, fmt.Errorf("config file %s: %w", path, err)
+				return nil, fmt.Errorf("%w %s: %w", ErrConfigFile, path, err)
 			}
 			// default path missing is fine — env-only mode
 		default:
-			return nil, err
+			return nil, fmt.Errorf("%w %s: %w", ErrConfigFile, resolved, err)
 		}
 	}
 
