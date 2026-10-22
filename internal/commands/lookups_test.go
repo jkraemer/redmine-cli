@@ -57,6 +57,35 @@ func TestUsersMe_Markdown(t *testing.T) {
 	}
 }
 
+// TestUsersMe_NeverPrintsAPIKey pins that the api_key Redmine returns for
+// /users/current.json never reaches the output in any format: locked mode
+// relies on the agent being unable to read the key.
+func TestUsersMe_NeverPrintsAPIKey(t *testing.T) {
+	for _, format := range []string{"json", "markdown"} {
+		t.Run(format, func(t *testing.T) {
+			c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"user":{"id":7,"login":"jens","firstname":"Jens","lastname":"K","mail":"jk@example.com","api_key":"SECRETKEY123"}}`))
+			})
+			defer stop()
+
+			var out bytes.Buffer
+			rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: format}
+			root := buildRootForTest(rc)
+			root.SetArgs([]string{"users", "me"})
+			if err := root.Execute(); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), "jens") {
+				t.Fatalf("missing user data:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "SECRETKEY123") {
+				t.Errorf("output contains api_key:\n%s", out.String())
+			}
+		})
+	}
+}
+
 func TestUsersList_JSON(t *testing.T) {
 	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/users.json" {

@@ -69,13 +69,13 @@ func Render(w io.Writer, cmd *cobra.Command, readOnly bool) error {
 			Name:    c.Name(),
 			Short:   c.Short,
 			Path:    c.CommandPath(),
-			Blocked: readOnly && isWrite(c),
+			Blocked: readOnly && IsWrite(c),
 		})
 	}
 	if notes, ok := cmd.Annotations["agent-notes"]; ok && notes != "" {
 		h.Notes = append(h.Notes, notes)
 	}
-	if readOnly && isWrite(cmd) {
+	if readOnly && IsWrite(cmd) {
 		h.Blocked = true
 		h.Notes = append(h.Notes, "read-only mode is active: this write command is blocked; running it with --confirm exits 8")
 	}
@@ -85,10 +85,21 @@ func Render(w io.Writer, cmd *cobra.Command, readOnly bool) error {
 	return enc.Encode(h)
 }
 
-// isWrite reports whether cmd is a server-mutating command, as declared by the
+// IsWrite reports whether cmd is a server-mutating command, as declared by the
 // "write" annotation the command layer sets on every --confirm command.
-func isWrite(cmd *cobra.Command) bool {
+func IsWrite(cmd *cobra.Command) bool {
 	return cmd.Annotations["write"] == "true"
+}
+
+// IsAuth reports whether cmd is the top-level auth command or any of its
+// descendants. These commands read and write OAuth credentials.
+func IsAuth(cmd *cobra.Command) bool {
+	for c := cmd; c.HasParent(); c = c.Parent() {
+		if !c.Parent().HasParent() {
+			return c.Name() == "auth"
+		}
+	}
+	return false
 }
 
 func flagToJSON(f *pflag.Flag) Flag {

@@ -227,6 +227,11 @@ func newAttachmentsDownloadCmd(rc *runCtx) *cobra.Command {
 			defer body.Close()
 
 			dest := outPath
+			// Locked mode may not write local files; the gate in root.go
+			// refuses any other --out, and the default goes to stdout.
+			if rc.locked && dest == "" {
+				dest = "-"
+			}
 			if dest == "-" {
 				// Raw bytes only: callers pipe stdout, so no summary follows.
 				_, err := io.Copy(rc.out, body)

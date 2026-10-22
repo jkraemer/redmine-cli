@@ -27,6 +27,7 @@ type runCtx struct {
 	format      string // "json" or "markdown"
 	agentHelp   bool
 	readOnly    bool
+	locked      bool
 	configPath  string
 	// parentCtx is the cancellable context for the whole CLI run. The
 	// production wiring derives it from os.Interrupt/SIGTERM in Execute,
@@ -39,6 +40,11 @@ type runCtx struct {
 // read-only mode (REDMINE_READ_ONLY env or read_only config). The command is
 // refused before any server call; exitCodeFor maps it to exit code 8.
 var ErrReadOnly = errors.New("read-only mode is enabled; refusing to send a write")
+
+// ErrLocked is returned when a command or flag is refused in locked mode
+// (REDMINE_LOCKED, used by the redmine-safe wrapper). exitCodeFor maps it to
+// exit code 8.
+var ErrLocked = errors.New("locked mode (redmine-safe): operation not permitted")
 
 // Build constructs the root command with all subcommands wired in.
 // ctx is the parent context for the whole run; it is propagated to every
@@ -88,6 +94,18 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.SetHelpFunc(helpFunc)
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, _ []string) error {
+		// The locked-mode gate runs first, before any early return and any
+		// file or network I/O, so no command path can bypass it.
+		locked, err := config.Locked()
+		if err != nil {
+			return err
+		}
+		if locked {
+			if err := lockedRefusal(cmd); err != nil {
+				return err
+			}
+			rc.locked = true
+		}
 		// Skip client init for help-only invocations.
 		if cmd.Name() == "help" || cmd.Name() == "version" || cmd.Name() == "redmine-cli" {
 			return nil
@@ -96,7 +114,12 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 		if cmd.Parent() != nil && cmd.Parent().Name() == "auth" {
 			return nil
 		}
-		cfg, err := config.Load(rc.configPath)
+		var cfg *config.Config
+		if rc.locked {
+			cfg, err = config.LoadLocked()
+		} else {
+			cfg, err = config.Load(rc.configPath)
+		}
 		if err != nil {
 			return err
 		}
@@ -118,7 +141,9 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 				return fmt.Errorf("%w: %s", ErrReadOnly, cmd.CommandPath())
 			}
 		}
-		if cfg.AuthMethod() == "oauth" {
+		// LoadLocked guarantees API-key auth, so locked mode never reaches
+		// the OAuth branch (no token read or refresh).
+		if !rc.locked && cfg.AuthMethod() == "oauth" {
 			tok := cfg.Token
 			if tok == nil {
 				return fmt.Errorf("not authenticated — run: redmine-cli auth login")
@@ -159,6 +184,26 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newVersionCmd(rc))
 
 	return root
+}
+
+// lockedRefusal returns an ErrLocked-wrapped error when cmd, as invoked, is
+// not permitted in locked mode: a --config override (only the default config
+// file may be read), an auth command (OAuth credentials), a write command
+// (even as a dry run, which can read local files), or --out pointing at a
+// path (only stdout may receive downloads).
+func lockedRefusal(cmd *cobra.Command) error {
+	switch {
+	case cmd.Flags().Changed("config"):
+		return fmt.Errorf("%w: --config is not allowed", ErrLocked)
+	case agenthelp.IsAuth(cmd):
+		return fmt.Errorf("%w: %s is an auth command", ErrLocked, cmd.CommandPath())
+	case agenthelp.IsWrite(cmd):
+		return fmt.Errorf("%w: %s is a write command", ErrLocked, cmd.CommandPath())
+	}
+	if f := cmd.Flags().Lookup("out"); f != nil && f.Changed && f.Value.String() != "-" {
+		return fmt.Errorf("%w: --out may only be - (stdout)", ErrLocked)
+	}
+	return nil
 }
 
 // Execute runs the root command and exits with the appropriate code.
@@ -214,10 +259,11 @@ func resolveFormat(flags *pflag.FlagSet, def string) (string, error) {
 }
 
 func exitCodeFor(err error) int {
-	if errors.Is(err, ErrReadOnly) {
+	if errors.Is(err, ErrReadOnly) || errors.Is(err, ErrLocked) {
 		return 8
 	}
-	if errors.Is(err, config.ErrMissingURL) || errors.Is(err, config.ErrMissingAPIKey) {
+	if errors.Is(err, config.ErrMissingURL) || errors.Is(err, config.ErrMissingAPIKey) ||
+		errors.Is(err, config.ErrInvalidLocked) || errors.Is(err, config.ErrLockedNeedsAPIKey) {
 		return 3
 	}
 	var apiErr *api.Error
