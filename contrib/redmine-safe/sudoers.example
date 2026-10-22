@@ -10,7 +10,7 @@
 # runs as the same user as the human: a still-valid sudo timestamp after the
 # human types a password would otherwise let the agent use sudo. (It does not
 # stop such an agent from capturing the password via the human's shell
-# startup files; a separate agent user does. See README.md.)
+# startup files. See README.md for the setups that do.)
 Defaults:<agent-user> timestamp_timeout=0
 
 <agent-user> ALL=(redmine-svc) NOPASSWD: /usr/local/libexec/redmine-safe/run

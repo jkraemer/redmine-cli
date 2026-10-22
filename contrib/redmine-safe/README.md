@@ -28,14 +28,28 @@ them.
 - **The agent cannot become root or `redmine-svc` by any other route.** In
   particular the agent's user must not have `NOPASSWD: ALL` sudo; check with
   `sudo -n true`, which must fail.
-- **Run the agent as its own user.** If the agent runs as the same user as
-  the human, a still-valid sudo timestamp after the human types a password
-  would let the agent use sudo; `Defaults:<agent-user> timestamp_timeout=0`
-  (see `sudoers.example`) closes that. It does not close the bigger hole: an
-  agent running as the human's user can also edit the human's shell startup
-  files (`~/.bashrc`, `~/.zshrc`, ...) or alias `sudo` and capture the
-  password the next time the human types it. Only a separate agent user
-  prevents that. A shared user is a convenience setup, not a secure one.
+- **Nobody gains root from inside the agent's user.** An agent can capture
+  any password typed in a session it controls: it can edit the user's shell
+  startup files (`~/.bashrc`, `~/.zshrc`, ...), alias `sudo`, or read a
+  terminal multiplexer (tmux, screen, ...) running as that user. Pick one:
+  - **Separate agent user** (strongest). Its home is the only place it can
+    write, so it cannot plant traps for the human.
+  - **Shared user without admin rights.** The agent runs as the human's
+    user, but that user is not in any admin group (`wheel`, `sudo`,
+    `admin`), so its only sudo right is the redmine-safe rule and its
+    password is worthless. The human gets root only through a separate
+    login as root (for example `ssh root@host` from another machine),
+    never through `sudo` or `su` from that user's sessions, and never by
+    `ssh root@...` from them either. Root's `authorized_keys` must not
+    accept any key the agent's user holds or can use through its
+    ssh-agent. As root, never run anything the agent's user can write:
+    builds, git hooks or scripts in its home, or a binary built there.
+    Confirm that root login works before removing the user from the admin
+    group.
+  - **Shared user with sudo** (convenience only, not secure).
+    `Defaults:<agent-user> timestamp_timeout=0` (see `sudoers.example`)
+    stops the agent from reusing a sudo the human just ran, but not from
+    capturing the password the next time the human types it.
 - **The locked binary, `run`, their directory, and its parents
   (`/usr/local`, `/usr/local/libexec`) are root-owned** and not writable by
   the agent or `redmine-svc`. Never point `run` at a binary in the agent's
@@ -155,6 +169,8 @@ Run as the agent's user:
 
 - `sudo -n -l` lists the `redmine-safe/run` rule as the only `NOPASSWD`
   entry. If you see `NOPASSWD: ALL`, stop and fix it.
+- For a shared user without admin rights: `id -Gn` lists no admin group
+  (`wheel`, `sudo`, `admin`).
 - `redmine-safe users me` prints the account of the API key.
 - `cat /home/redmine-svc/.config/redmine-cli/config.toml` fails with
   "Permission denied".
