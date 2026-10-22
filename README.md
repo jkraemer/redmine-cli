@@ -187,6 +187,16 @@ This is the only way to constrain an API-key client, which otherwise inherits
 the full permissions of its user (see above). With OAuth you can additionally
 limit the granted scopes.
 
+### Locked mode / redmine-safe
+
+Setting `REDMINE_LOCKED=1` starts redmine-cli in a locked mode meant for
+running it under a separate user so an agent can read an instance without
+ever seeing its API key: reads only, config from the default path only,
+credential env vars and `--config` ignored or refused, `auth` refused, and
+attachments streamed to stdout. Refusals exit 8. See
+[`contrib/redmine-safe/`](contrib/redmine-safe/) for a sudo-based wrapper,
+install steps, and an agent skill.
+
 ### Multiple instances / config files
 
 To run `redmine-cli` against more than one Redmine instance, you can use a tool

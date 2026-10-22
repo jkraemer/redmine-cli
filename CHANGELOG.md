@@ -6,6 +6,15 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Locked mode (`REDMINE_LOCKED`): reads only, config from the default path
+  only, API-key auth only; writes, `auth`, and `--config` are refused with
+  exit 8
+- `attachments download -o -` streams the raw file to stdout
+- `contrib/redmine-safe`: example sudo wrapper and agent skill that keep
+  the API key out of the agent's reach
+
 ## [0.2.0] - 2026-10-22
 
 ### Added

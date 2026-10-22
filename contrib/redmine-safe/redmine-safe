@@ -1,0 +1,3 @@
+#!/bin/sh
+# Agent-facing entry point: run the locked redmine-cli as redmine-svc.
+exec sudo -n -u redmine-svc /usr/local/libexec/redmine-safe/run "$@"

@@ -86,6 +86,11 @@ else lives under `internal/`:
   Write commands declare themselves via `addConfirmFlag` (sets the
   `write` annotation); `--agent --help` and the dry-run footer read that
   + the resolved flag to advertise the restriction.
+- **Locked mode.** `REDMINE_LOCKED` (used by `contrib/redmine-safe`)
+  forces read-only and refuses writes, `auth`, `--config`, and
+  non-stdout downloads. The gate lives in `root.go::PersistentPreRunE`
+  plus the help func (which must never read `--config`); don't add
+  per-command locked checks.
 - **Pointer semantics on updates.** `issues update` only sends fields
   that were explicitly set. Pass `--description ""` to clear; omit to
   leave unchanged.

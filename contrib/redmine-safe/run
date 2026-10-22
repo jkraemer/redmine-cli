@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs as redmine-svc via sudo. Starts the root-owned redmine-cli copy in
+# locked mode with a cleared environment; the API key stays in
+# /home/redmine-svc/.config/redmine-cli/config.toml.
+cd / || exit 1
+exec env -i HOME=/home/redmine-svc PATH=/usr/bin:/bin REDMINE_LOCKED=1 \
+  /usr/local/libexec/redmine-safe/redmine-cli "$@"
