@@ -227,6 +227,11 @@ func newAttachmentsDownloadCmd(rc *runCtx) *cobra.Command {
 			defer body.Close()
 
 			dest := outPath
+			if dest == "-" {
+				// Raw bytes only: callers pipe stdout, so no summary follows.
+				_, err := io.Copy(rc.out, body)
+				return err
+			}
 			if dest == "" {
 				safeName, err := sanitizeAttachmentFilename(meta.Filename)
 				if err != nil {
@@ -277,6 +282,6 @@ func newAttachmentsDownloadCmd(rc *runCtx) *cobra.Command {
 			})
 		},
 	}
-	cmd.Flags().StringVarP(&outPath, "out", "o", "", "Output path (default: <user cache dir>/redmine-cli/<id>-<filename>)")
+	cmd.Flags().StringVarP(&outPath, "out", "o", "", "Output path, or - for stdout (default: <user cache dir>/redmine-cli/<id>-<filename>)")
 	return cmd
 }

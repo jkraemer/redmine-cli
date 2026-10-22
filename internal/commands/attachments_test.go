@@ -134,3 +134,28 @@ func TestAttachmentsDownload_RejectsPathologicalFilename(t *testing.T) {
 		})
 	}
 }
+
+// TestAttachmentsDownload_StdoutDash: -o - copies the raw body to stdout and
+// prints nothing else, creating no file in the cache dir.
+func TestAttachmentsDownload_StdoutDash(t *testing.T) {
+	cacheHome := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cacheHome)
+	content := "\x89PNG\r\n\x1a\nBYTES"
+	srv := singleHostAttachmentSrv(t, "img.png", content)
+	defer srv.Close()
+
+	c := api.New(srv.URL, "k", srv.Client())
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"attachments", "download", "42", "-o", "-"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if out.String() != content {
+		t.Errorf("stdout=%q, want %q", out.String(), content)
+	}
+	if _, err := os.Stat(filepath.Join(cacheHome, "redmine-cli")); !os.IsNotExist(err) {
+		t.Errorf("cache dir should not exist, stat err=%v", err)
+	}
+}
