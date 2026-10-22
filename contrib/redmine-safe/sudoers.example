@@ -1,14 +1,16 @@
 # Install with:  visudo -f /etc/sudoers.d/zz-redmine-safe
 #
-# Replace <agent-user> with the user the agent runs as (on Jens's machine: jk).
+# Replace <agent-user> with the user the agent runs as.
 #
 # sudo applies the LAST matching rule. If <agent-user> is covered by a more
 # general rule elsewhere (e.g. %wheel ALL=(ALL) ALL), this file must sort
 # after it, hence the "zz-" prefix. Check the result with `sudo -n -l`.
 #
-# If the agent runs as the same user as the human, a still-valid sudo
-# timestamp after the human types a password would let the agent use sudo.
-# Uncomment this to make sudo ask every time:
-# Defaults:<agent-user> timestamp_timeout=0
+# Make sudo ask for the password every time. This matters when the agent
+# runs as the same user as the human: a still-valid sudo timestamp after the
+# human types a password would otherwise let the agent use sudo. (It does not
+# stop such an agent from capturing the password via the human's shell
+# startup files; a separate agent user does. See README.md.)
+Defaults:<agent-user> timestamp_timeout=0
 
 <agent-user> ALL=(redmine-svc) NOPASSWD: /usr/local/libexec/redmine-safe/run
