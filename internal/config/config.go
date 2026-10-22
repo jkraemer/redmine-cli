@@ -149,7 +149,7 @@ func load(path string, locked bool) (*Config, error) {
 	if cfg.URL == "" {
 		return nil, ErrMissingURL
 	}
-	if cfg.APIKey == "" && cfg.OAuthClientID == "" {
+	if !locked && cfg.APIKey == "" && cfg.OAuthClientID == "" {
 		return nil, ErrMissingAPIKey
 	}
 	return cfg, nil

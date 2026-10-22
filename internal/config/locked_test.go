@@ -139,3 +139,13 @@ func TestLoadLocked_MissingFile(t *testing.T) {
 		t.Fatalf("err=%v, want ErrMissingURL", err)
 	}
 }
+
+func TestLoadLocked_NoAPIKey(t *testing.T) {
+	writeDefaultConfig(t, `url = "https://x"
+`)
+
+	_, err := LoadLocked()
+	if !errors.Is(err, ErrLockedNeedsAPIKey) {
+		t.Fatalf("err=%v, want ErrLockedNeedsAPIKey", err)
+	}
+}
