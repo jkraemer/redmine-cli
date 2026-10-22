@@ -70,20 +70,22 @@ runs as (on Jens's machine: `jk`).
        install -d -o root -g root -m 0755 /usr/local/libexec/redmine-safe
 
 4. Install the locked binary (a release binary or your own build) and the
-   `run` script, both root:root 0755:
+   `run` script, both root:root 0755. Take the sources from a directory only
+   root can write to, not from `/tmp` or the agent's home:
 
        install -o root -g root -m 0755 /path/to/redmine-cli /usr/local/libexec/redmine-safe/redmine-cli
        install -o root -g root -m 0755 run /usr/local/libexec/redmine-safe/run
 
-5. Install the sudoers rule. Copy `sudoers.example` to a temporary file,
-   replace `<agent-user>`, then:
+5. Install the sudoers rule by editing in place; visudo validates the file
+   before saving it. Paste the rule from `sudoers.example` and replace
+   `<agent-user>`:
 
-       visudo -c -f /tmp/zz-redmine-safe
-       install -o root -g root -m 0440 /tmp/zz-redmine-safe /etc/sudoers.d/zz-redmine-safe
+       visudo -f /etc/sudoers.d/zz-redmine-safe
 
-   Or edit directly with `visudo -f /etc/sudoers.d/zz-redmine-safe`. The
-   `zz-` prefix matters: sudo uses the last matching rule, so the file must
-   sort after any general rule for the agent's user.
+   Do not stage the file in `/tmp` or any other world-writable directory:
+   another user could replace it between the check and the copy. The `zz-`
+   prefix matters: sudo uses the last matching rule, so the file must sort
+   after any general rule for the agent's user.
 
 6. Put the shim on the agent's PATH, for example:
 
