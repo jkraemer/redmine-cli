@@ -6,6 +6,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
 ### Added
 
 - `issues get --include checklists` returns checklist items with their
