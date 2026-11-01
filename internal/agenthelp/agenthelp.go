@@ -40,6 +40,10 @@ type Help struct {
 	InheritedFlags []Flag       `json:"inherited_flags,omitempty"`
 	Subcommands    []Subcommand `json:"subcommands,omitempty"`
 	Notes          []string     `json:"notes,omitempty"`
+	// ExampleOutput is a one-line sketch of the command's JSON output shape,
+	// taken from the "agent-example-output" annotation, so agents can pick
+	// the right keys without a trial run.
+	ExampleOutput string `json:"example_output,omitempty"`
 }
 
 // Render writes a JSON Help document for cmd to w. When readOnly is true the
@@ -77,6 +81,9 @@ func Render(w io.Writer, cmd *cobra.Command, readOnly, locked bool) error {
 	}
 	if notes, ok := cmd.Annotations["agent-notes"]; ok && notes != "" {
 		h.Notes = append(h.Notes, notes)
+	}
+	if ex, ok := cmd.Annotations["agent-example-output"]; ok && ex != "" {
+		h.ExampleOutput = ex
 	}
 	if readOnly && IsWrite(cmd) {
 		h.Blocked = true

@@ -6,6 +6,18 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking for JSON consumers:** `wiki get` and `wiki put` JSON output is
+  now wrapped in `{"wiki_page": {...}}`, mirroring the Redmine API like
+  `issues get` (`{"issue": {...}}`) and `users me` (`{"user": {...}}`)
+  already do. Update `jq` paths from `.text` to `.wiki_page.text`.
+
+### Added
+
+- `--agent --help` carries an `example_output` field on `issues get`,
+  `wiki get`, and `users me` sketching the JSON shape of the response.
+
 ## [0.3.0] - 2026-10-22
 
 ### Added

@@ -48,7 +48,9 @@ it next to this file. Pass a version argument (e.g. `0.1.0`) to pin.
    parsing, `--format markdown` (`-m`) for human-readable output. Pass at most
    one of `--format`/`-m`/`-j`.
 2. **Use `--agent --help` to discover commands** — works at every level and
-   returns structured JSON.
+   returns structured JSON. `get`-style commands (`issues get`, `wiki get`,
+   `users me`) include an `example_output` field sketching their JSON
+   response, so read that instead of guessing keys.
 3. **Write ops are dry-run by default.** `issues create`, `issues update`,
    `wiki put`, and `time log` print the request payload and exit 0 unless
    `--confirm` is passed. Always run dry-run first to inspect the body, then
@@ -100,6 +102,10 @@ Wiki pages are always scoped to a project (`--project` is required).
 Notes:
 - Page titles are case-sensitive and match the Redmine URL slug (e.g. `Database-Model`).
 - `wiki get` includes attachments in the response automatically.
+- `wiki get -j` (and `wiki put --confirm -j`) return the API shape
+  `{"wiki_page": {"title", "text", "version", ...}}` — e.g.
+  `jq -r '.wiki_page.text'` for the page source, `.wiki_page.version` for
+  the current version.
 - A 404 means either the page doesn't exist or the Wiki module is not enabled for that project.
 - `wiki put` uses idempotent PUT — it **creates** the page if it doesn't exist, **updates** it if it does.
 - **Write ops are dry-run by default.** Always inspect the preview before adding `--confirm`.

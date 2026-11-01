@@ -287,3 +287,76 @@ func TestWikiPut_Attach_MidBatchUploadFailure(t *testing.T) {
 		t.Errorf("put calls=%d, want 0", got)
 	}
 }
+
+// TestWikiGet_JSON_WrappedInWikiPage: JSON output mirrors the API shape,
+// {"wiki_page": {...}}, like issues get does with {"issue": {...}}, so
+// consumers can use the API key (e.g. jq '.wiki_page.text').
+func TestWikiGet_JSON_WrappedInWikiPage(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"wiki_page":{"title":"MyPage","text":"hello\r\nworld","version":3,"author":{"id":1,"name":"A"},"created_on":"2026-01-01","updated_on":"2026-01-02"}}`))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "get", "MyPage", "--project", "P"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	page, ok := got["wiki_page"].(map[string]any)
+	if !ok {
+		t.Fatalf("top-level wiki_page missing: %v", got)
+	}
+	if page["text"] != "hello\r\nworld" {
+		t.Errorf("text=%q", page["text"])
+	}
+	if page["version"] != float64(3) {
+		t.Errorf("version=%v", page["version"])
+	}
+	if _, bare := got["text"]; bare {
+		t.Errorf("page must not also be printed unwrapped: %v", got)
+	}
+}
+
+// TestWikiPut_Confirm_JSON_WrappedInWikiPage: the confirmed put echoes the
+// saved page in the same {"wiki_page": {...}} shape as wiki get.
+func TestWikiPut_Confirm_JSON_WrappedInWikiPage(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Method {
+		case "PUT":
+			w.WriteHeader(204)
+		case "GET":
+			_, _ = w.Write([]byte(`{"wiki_page":{"title":"MyPage","text":"hello","version":2,"author":{"id":1,"name":"A"},"created_on":"2026-01-01","updated_on":"2026-01-02"}}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+		}
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "put", "MyPage", "--project", "P", "--text", "hello", "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	page, ok := got["wiki_page"].(map[string]any)
+	if !ok {
+		t.Fatalf("top-level wiki_page missing: %v", got)
+	}
+	if page["version"] != float64(2) {
+		t.Errorf("version=%v", page["version"])
+	}
+}

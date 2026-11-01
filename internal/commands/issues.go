@@ -136,6 +136,9 @@ func newIssuesGetCmd(rc *runCtx) *cobra.Command {
 			return renderIssueDetail(rc, issue)
 		},
 	}
+	cmd.Annotations = map[string]string{
+		"agent-example-output": `{"issue": {"id": 42, "subject": "...", "description": "...", "project": {"id": 1, "name": "..."}, "tracker": {"id": 1, "name": "Bug"}, "status": {"id": 1, "name": "New"}, "priority": {"id": 2, "name": "Normal"}, "author": {"id": 1, "name": "..."}, "custom_fields": [...]}} (JSON; -m renders markdown)`,
+	}
 	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, watchers, checklists (requires the redmine_checklists plugin)")
 	return cmd
 }
