@@ -23,6 +23,9 @@ func newUsersMeCmd(rc *runCtx) *cobra.Command {
 	return &cobra.Command{
 		Use:   "me",
 		Short: "Show the currently authenticated user",
+		Annotations: map[string]string{
+			"agent-example-output": `{"user": {"id": 1, "login": "jdoe", "firstname": "...", "lastname": "...", "mail": "..."}} (JSON; -m renders a Field/Value table)`,
+		},
 		RunE: func(_ *cobra.Command, _ []string) error {
 			u, err := rc.client.GetCurrentUser(rc.ctx())
 			if err != nil {

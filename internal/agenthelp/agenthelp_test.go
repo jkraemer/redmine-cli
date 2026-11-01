@@ -64,3 +64,36 @@ func TestRender_Subcommand(t *testing.T) {
 		t.Error("expected flags")
 	}
 }
+
+func TestRender_ExampleOutput(t *testing.T) {
+	root := &cobra.Command{Use: "redmine-cli"}
+	get := &cobra.Command{
+		Use:   "get",
+		Short: "Get a thing",
+		Annotations: map[string]string{
+			"agent-example-output": `{"thing": {"id": 1}}`,
+		},
+	}
+	plain := &cobra.Command{Use: "list", Short: "List things"}
+	root.AddCommand(get, plain)
+
+	var buf bytes.Buffer
+	if err := Render(&buf, get, false, false); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, buf.String())
+	}
+	if got["example_output"] != `{"thing": {"id": 1}}` {
+		t.Errorf("example_output=%v", got["example_output"])
+	}
+
+	buf.Reset()
+	if err := Render(&buf, plain, false, false); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(buf.String(), "example_output") {
+		t.Errorf("example_output must be omitted when no annotation is set:\n%s", buf.String())
+	}
+}

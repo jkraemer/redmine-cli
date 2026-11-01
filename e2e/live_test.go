@@ -475,20 +475,32 @@ func TestAttachments(t *testing.T) {
 
 func TestWiki(t *testing.T) {
 	out1 := runJSON(t, "wiki", "put", "E2ETestPage", "--project", project, "--text", "h1. live\n\nfirst version", "--confirm")
-	v1, ok := out1["version"].(float64)
+	page1, ok := out1["wiki_page"].(map[string]any)
 	if !ok {
-		t.Fatalf("wiki put: no numeric version in %v", out1)
+		t.Fatalf("wiki put: no wiki_page in %v", out1)
+	}
+	v1, ok := page1["version"].(float64)
+	if !ok {
+		t.Fatalf("wiki put: no numeric version in %v", page1)
 	}
 
 	getOut := runJSON(t, "wiki", "get", "E2ETestPage", "--project", project)
-	if !strings.Contains(fmt.Sprintf("%v", getOut["text"]), "first version") {
-		t.Errorf("wiki get: text=%v, want to contain %q", getOut["text"], "first version")
+	getPage, ok := getOut["wiki_page"].(map[string]any)
+	if !ok {
+		t.Fatalf("wiki get: no wiki_page in %v", getOut)
+	}
+	if !strings.Contains(fmt.Sprintf("%v", getPage["text"]), "first version") {
+		t.Errorf("wiki get: text=%v, want to contain %q", getPage["text"], "first version")
 	}
 
 	out2 := runJSON(t, "wiki", "put", "E2ETestPage", "--project", project, "--text", "h1. live\n\nsecond version", "--confirm")
-	v2, ok := out2["version"].(float64)
+	page2, ok := out2["wiki_page"].(map[string]any)
 	if !ok {
-		t.Fatalf("second wiki put: no numeric version in %v", out2)
+		t.Fatalf("second wiki put: no wiki_page in %v", out2)
+	}
+	v2, ok := page2["version"].(float64)
+	if !ok {
+		t.Fatalf("second wiki put: no numeric version in %v", page2)
 	}
 	if v2 <= v1 {
 		t.Errorf("second put did not bump version: v1=%v v2=%v", v1, v2)

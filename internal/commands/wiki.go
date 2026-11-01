@@ -81,8 +81,13 @@ func newWikiGetCmd(rc *runCtx) *cobra.Command {
 				}
 				return nil
 			}
-			return output.JSON(rc.out, page)
+			// Mirror the API shape ({"wiki_page": {...}}), like issues get
+			// does with {"issue": {...}}.
+			return output.JSON(rc.out, map[string]any{"wiki_page": page})
 		},
+	}
+	cmd.Annotations = map[string]string{
+		"agent-example-output": `{"wiki_page": {"title": "Page", "text": "...", "version": 3, "author": {"id": 1, "name": "..."}, "created_on": "...", "updated_on": "...", "attachments": [...]}} (JSON; -m renders a header block followed by the page text)`,
 	}
 	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Project ID or identifier (required)")
 	_ = cmd.MarkFlagRequired("project")
@@ -145,7 +150,7 @@ func newWikiPutCmd(rc *runCtx) *cobra.Command {
 				}
 				return nil
 			}
-			return output.JSON(rc.out, page)
+			return output.JSON(rc.out, map[string]any{"wiki_page": page})
 		},
 	}
 	cmd.Flags().StringVarP(&projectID, "project", "p", "", "Project ID or identifier (required)")
