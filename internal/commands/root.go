@@ -29,6 +29,11 @@ type runCtx struct {
 	readOnly    bool
 	locked      bool
 	configPath  string
+	// authMethod is "oauth" or "apikey" once the client is built; oauthScope
+	// is the space-separated scope stored with the OAuth token (may be empty
+	// when the server reported none). decorateForbidden uses both.
+	authMethod string
+	oauthScope string
 	// parentCtx is the cancellable context for the whole CLI run. The
 	// production wiring derives it from os.Interrupt/SIGTERM in Execute,
 	// so Ctrl-C cancels any in-flight HTTP request. Tests may set their
@@ -167,8 +172,11 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 				tok = refreshed
 			}
 			rc.client = api.NewWithToken(cfg.URL, tok.AccessToken, nil)
+			rc.authMethod = "oauth"
+			rc.oauthScope = tok.Scope
 		} else {
 			rc.client = api.New(cfg.URL, cfg.APIKey, nil)
+			rc.authMethod = "apikey"
 		}
 		return nil
 	}
@@ -189,6 +197,10 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newQueriesCmd(rc))
 	root.AddCommand(newAuthCmd(rc))
 	root.AddCommand(newVersionCmd(rc))
+
+	// Single decoration point for 403s: with OAuth, name the granted and
+	// required scopes so the user can fix oauth_scopes instead of guessing.
+	wrapRunE(rc, root)
 
 	return root
 }

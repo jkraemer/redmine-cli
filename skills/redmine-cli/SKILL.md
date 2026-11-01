@@ -251,8 +251,28 @@ Or via env: `REDMINE_OAUTH_CLIENT_ID`, `REDMINE_OAUTH_CLIENT_SECRET`,
 
 Then run `redmine-cli auth login`. `auth status` shows the granted scope
 and is preserved across token refreshes. The OAuth token is stored in
-the same TOML file under a `[token]` section. See README for a list
-of common scopes and the admin workaround for older Redmines.
+the same TOML file under a `[token]` section. See README for the admin
+workaround for older Redmines.
+
+Scopes are Redmine permission names. Scope needed per command group:
+
+| Command group | Scope |
+|------|---------|
+| `projects list` | none (project visibility applies) |
+| `issues list/get`, `categories list`, `queries list` | `view_issues` |
+| `issues create` | `add_issues` |
+| `issues update` | `edit_issues` (`add_issue_notes` for notes only) |
+| `issues watchers add` / `remove` | `add_issue_watchers` / `delete_issue_watchers` |
+| `wiki list/get` | `view_wiki_pages` |
+| `wiki put` | `edit_wiki_pages` |
+| `time log` | `log_time` |
+| `search` | `search_project` |
+| `trackers`, `statuses`, `priorities`, `time-activities`, `users me` | none |
+| `users list`, `custom-fields list` | admin only |
+
+A 403 under OAuth names the token's granted scope and the scope the
+command needs; fix `oauth_scopes` and re-run `auth login` rather than
+retrying.
 
 ### Multiple instances
 
@@ -270,7 +290,7 @@ tokens never leak between instances:
 | 1 | Usage error / API validation error (4xx other than below) |
 | 2 | Not found (404) |
 | 3 | Auth error / missing config |
-| 4 | Forbidden (403) |
+| 4 | Forbidden (403); with OAuth the message names the granted scope and the scope the command needs |
 | 5 | Rate limited (429) |
 | 6 | Network error |
 | 7 | API error (5xx) |

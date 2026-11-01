@@ -147,24 +147,32 @@ preserve it.
 
 #### Reference: OAuth scopes / permissions
 
-The following Redmine permissions are currently used by the CLI. You can grant
-the application only a subset of these, functionality will always be limited to
-the union of application permissions and the permissions, the authorizing user
-actually has in a given project.
+Redmine's OAuth scopes are its permission names. The table lists the scope
+each command group is authorized against, so `oauth_scopes` can be set
+correctly up front. You can grant the application only a subset; functionality
+is always limited to the intersection of the token's scopes and the permissions
+the authorizing user actually has in a given project.
 
-- `view_project`
-- `search_project`
-- `view_issues`
-- `add_issues`
-- `edit_issues`
-- `edit_own_issues`
-- `add_issue_notes`
-- `edit_issue_notes`
-- `edit_own_issue_notes`
-- `view_wiki_pages`
-- `edit_wiki_pages`
-- `view_time_entries`
-- `log_time`
+| Command group | Scope(s) needed |
+|---|---|
+| `projects list` | none beyond project visibility (`view_project` covers `projects/:id` reads) |
+| `issues list`, `issues get`, `categories list`, `queries list` | `view_issues` |
+| `issues create` | `add_issues` |
+| `issues update` | `edit_issues` (or `edit_own_issues`; `add_issue_notes` is enough for notes only) |
+| `issues watchers add` / `remove` | `add_issue_watchers` / `delete_issue_watchers` |
+| `wiki list`, `wiki get` | `view_wiki_pages` |
+| `wiki put` | `edit_wiki_pages` |
+| `time log` | `log_time` (`view_time_entries` to read entries back) |
+| `search` | `search_project` |
+| `attachments download` | the view permission of the container (`view_issues` or `view_wiki_pages`) |
+| `trackers`, `statuses`, `priorities`, `time-activities`, `users me` | none |
+| `users list`, `custom-fields list` | admin only (the `admin` scope, where the Redmine version offers it) |
+
+When a request is refused with 403 under OAuth, the error names the scope
+stored with the token and, for the commands above, the scope the command
+needs, e.g.
+
+    redmine API 403 at https://x/search.json?q=foo: ...; OAuth token scope: "view_issues edit_issues" (this command needs: search_project) — re-run auth login with the missing scope in oauth_scopes
 
 ### Read-only mode
 
