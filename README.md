@@ -230,8 +230,8 @@ When `--config` is omitted, the default
     ./redmine-cli attachments download 42
     ./redmine-cli wiki list --project myproj
     ./redmine-cli wiki get Architecture --project myproj
-    ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --confirm
-    ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --attach diagram.png --confirm
+    ./redmine-cli wiki put MyPage --project myproj --text-file draft.md --confirm
+    ./redmine-cli wiki put MyPage --project myproj --text-file draft.md --attach diagram.png --confirm
     ./redmine-cli categories list --project myproj
     ./redmine-cli custom-fields list
     ./redmine-cli version
