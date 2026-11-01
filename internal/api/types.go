@@ -375,9 +375,12 @@ type ListWikiPagesResult struct {
 // WikiPageWrite is the payload for PUT /projects/{id}/wiki/{title}.json.
 // Redmine uses PUT for both create and update (idempotent).
 // Wrap in {"wiki_page": ...} when sending.
+// Version, when > 0, is the page version the caller last read; Redmine
+// rejects the write with 409 Conflict if the page has moved on since.
 type WikiPageWrite struct {
 	Text     string      `json:"text"`
 	Comments string      `json:"comments,omitempty"`
+	Version  int         `json:"version,omitempty"`
 	Uploads  []UploadRef `json:"uploads,omitempty"`
 }
 

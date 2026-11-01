@@ -6,6 +6,16 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `wiki get --raw` prints only the page source, bytes untouched (no
+  header, no trailing newline added, line endings preserved)
+- `wiki get -o <path>` writes the page source to a file and prints the
+  absolute path; `-o -` streams it to stdout like `--raw`. Locked mode
+  accepts only `-o -`, as for `attachments download`
+- `wiki put --version N` sends the expected page version for optimistic
+  locking; a 409 Conflict is reported as "modified on the server" (exit 1)
+
 ## [0.3.0] - 2026-10-22
 
 ### Added

@@ -92,10 +92,29 @@ Wiki pages are always scoped to a project (`--project` is required).
 | List wiki pages in a project | `redmine-cli wiki list --project myproj` |
 | Get a page by title | `redmine-cli wiki get Architecture --project myproj` |
 | Get a page as JSON | `redmine-cli wiki get Architecture --project myproj --format json` |
-
+| Get raw page source (bytes untouched) | `redmine-cli wiki get Architecture --project myproj --raw` |
+| Save page source to a file | `redmine-cli wiki get Architecture --project myproj -o page.md` |
 | Create or update a page | `redmine-cli wiki put MyPage --project myproj --text "h1. Hello"` |
 | Create from file | `redmine-cli wiki put MyPage --project myproj --text-file page.textile --comments "Initial draft"` |
+| Update with optimistic locking | `redmine-cli wiki put MyPage --project myproj --text-file page.md --version 12` |
 | Actually send (not dry-run) | append `--confirm` |
+
+### Round-trip edit of an existing page
+
+```bash
+redmine-cli wiki get Architecture --project myproj -o page.md   # prints the path; note "version" from -j or the markdown header
+# edit page.md with your file tool
+redmine-cli wiki put Architecture --project myproj --text-file page.md --version 12 --confirm
+```
+
+- `--raw` and `-o <path>` write the page source exactly as stored: no
+  header block, no trailing newline added, line endings (LF or CRLF)
+  preserved as-is, so what you put back is what you got. `-o -` is the
+  same as `--raw` (stdout).
+- `--version N` is the version you read (`wiki get -j` reports it). If
+  someone else saved the page in between, the server answers 409 Conflict
+  and the CLI exits 1 with a "modified on the server" message: re-run
+  `wiki get`, re-apply your edit, and retry with the new version.
 
 Notes:
 - Page titles are case-sensitive and match the Redmine URL slug (e.g. `Database-Model`).
