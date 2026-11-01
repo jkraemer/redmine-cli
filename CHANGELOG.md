@@ -6,6 +6,25 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `issues get --include allowed_statuses` is documented and rendered: the
+  status transitions the current user's role may make on the issue
+- `issues update --confirm` prints the resulting values of the fields it
+  sent, e.g. `Updated issue #42 (status: Resolved (3), done: 100%).`; the
+  JSON output carries the re-read `issue`
+
+### Fixed
+
+- `issues update --confirm` no longer reports success for fields Redmine
+  silently dropped (a status transition the role may not make, a user who
+  is not assignable, ...). With `--status` the issue is preflighted via
+  `include=allowed_statuses` and a disallowed transition is refused with
+  exit 1 before anything is sent; after the update the issue is re-read and
+  every sent field is verified, with a stderr warning per dropped field,
+  `not_applied` in the JSON output, and exit 1 (notes and the other fields
+  are still saved)
+
 ## [0.3.0] - 2026-10-22
 
 ### Added

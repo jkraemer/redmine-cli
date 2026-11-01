@@ -226,6 +226,7 @@ When `--config` is omitted, the default
     ./redmine-cli issues get 1459
     ./redmine-cli issues create --project myproj --tracker 1 --subject "Bug" --attach screenshot.png --confirm
     ./redmine-cli issues update 1459 --attach patch.diff --notes "see attached" --confirm
+    ./redmine-cli issues get 1459 --include allowed_statuses   # status transitions your role may make
     ./redmine-cli issues watchers add 1459 7 --confirm
     ./redmine-cli attachments download 42
     ./redmine-cli wiki list --project myproj
@@ -237,6 +238,20 @@ When `--config` is omitted, the default
     ./redmine-cli version
 
 See `./redmine-cli --agent --help` for machine-readable help.
+
+Redmine answers a `PUT /issues/{id}.json` with HTTP 200 even when it drops a
+field it will not apply — a status transition the user's role is not allowed
+to make in the project workflow, a user who is not assignable, and so on.
+`issues update --confirm` therefore verifies its own work: with `--status`
+it first fetches the issue with `include=allowed_statuses` and refuses a
+disallowed transition (exit 1, naming the allowed statuses) before sending
+anything; after the update it re-reads the issue and compares every field it
+sent. Fields the server dropped are reported on stderr and the command exits
+1 (notes and the other fields were still saved). The success line lists the
+resulting values, e.g. `Updated issue #1459 (status: Resolved (3), done:
+100%).`; the JSON output carries the re-read `issue` and a `not_applied` list
+when something was dropped. Redmine versions that do not return
+`allowed_statuses` skip the preflight.
 
 ## Testing
 

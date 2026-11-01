@@ -126,6 +126,7 @@ Notes:
 | Get full issue with journals | `redmine-cli issues get 1459 --include journals,attachments` |
 | Get issue with watchers | `redmine-cli issues get 1459 --include watchers` |
 | Get issue with checklist items | `redmine-cli issues get 1459 --include checklists` |
+| Statuses allowed on an issue | `redmine-cli issues get 1459 --include allowed_statuses` |
 | Download attachment | `redmine-cli attachments download 42` |
 | Save attachment to a path | `redmine-cli attachments download 42 -o /tmp/foo.png` |
 
@@ -187,6 +188,27 @@ Scopes: `--scope all|my_projects|subprojects` (default = `all`).
 `issues update` uses pointer semantics: only flags you pass are sent. Pass
 `--description ""` explicitly to clear the description; omit it to leave
 it unchanged.
+
+Redmine answers HTTP 200 even when it drops a field it will not apply (a
+status transition your role may not make in the project workflow, a user
+who is not assignable, ...). `issues update --confirm` guards against
+that:
+
+- With `--status`, it first fetches the issue with
+  `include=allowed_statuses` and refuses a transition that is not in the
+  list — exit 1, the message names the allowed statuses (name + id). Pick
+  only from that list; an empty list means your role has no transitions
+  on this tracker, so report that instead of retrying. `statuses list` is
+  the global list, not what is allowed on a given issue. Older Redmine
+  versions without `allowed_statuses` skip this check.
+- After the update it re-reads the issue and verifies every field it
+  sent (status, assignee, priority, category, done ratio, dates, subject,
+  description, custom fields). Each dropped field produces a `warning:`
+  line on stderr and the command exits 1 — but notes and the other fields
+  were saved, so do not simply retry the same command. In JSON the
+  dropped fields are listed under `not_applied`; the success line in
+  markdown shows the resulting values, e.g.
+  `Updated issue #42 (status: New (1), done: 100%).`
 
 ### Notes from a file
 

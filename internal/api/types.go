@@ -83,6 +83,11 @@ type Issue struct {
 	Watchers     []IDName           `json:"watchers,omitempty"`
 	CustomFields []CustomFieldValue `json:"custom_fields,omitempty"`
 	Checklists   []ChecklistItem    `json:"checklists,omitempty"`
+	// AllowedStatuses is populated by include=allowed_statuses (Redmine
+	// 5.0+): the status transitions the current user's role may make on
+	// this issue. nil means the server did not return the key (older
+	// Redmine); a non-nil empty slice means the role has no transitions.
+	AllowedStatuses []Status `json:"allowed_statuses,omitempty"`
 }
 
 // ChecklistItem is one entry of an issue's checklist, provided by the
@@ -162,7 +167,7 @@ type ListProjectsParams struct {
 
 // GetIssueParams covers the include flags accepted by /issues/{id}.json.
 type GetIssueParams struct {
-	Include []string // journals, attachments, relations, children, watchers
+	Include []string // journals, attachments, relations, children, watchers, allowed_statuses
 }
 
 // CustomFieldValue is a single custom field assignment for create/update

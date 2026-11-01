@@ -3,6 +3,7 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -210,6 +211,11 @@ func TestIssuesUpdate_Confirm_SendsPUT(t *testing.T) {
 	var seenMethod, seenPath string
 	var seenBody []byte
 	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" {
+			// Post-update verification read.
+			_, _ = w.Write([]byte(minimalIssueJSON))
+			return
+		}
 		seenMethod = r.Method
 		seenPath = r.URL.Path
 		seenBody, _ = io.ReadAll(r.Body)
@@ -982,6 +988,9 @@ func TestIssuesUpdate_Attach_Alone_IsValid(t *testing.T) {
 			atomic.AddInt32(&updateCalls, 1)
 			updateBody, _ = io.ReadAll(r.Body)
 			w.WriteHeader(204)
+		case r.URL.Path == "/issues/7.json" && r.Method == "GET":
+			// Post-update verification read.
+			_, _ = w.Write([]byte(minimalIssueJSON))
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(404)
@@ -1045,6 +1054,9 @@ func TestIssuesUpdate_Attach_WithOtherFields(t *testing.T) {
 			atomic.AddInt32(&updateCalls, 1)
 			updateBody, _ = io.ReadAll(r.Body)
 			w.WriteHeader(204)
+		case r.URL.Path == "/issues/7.json" && r.Method == "GET":
+			// Post-update verification read.
+			_, _ = w.Write([]byte(minimalIssueJSON))
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
 			w.WriteHeader(404)
@@ -1528,5 +1540,359 @@ func TestIssuesGet_IncludeChecklists_PluginMissingIsNotFound(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Errorf("no issue output expected on failure:\n%s", out.String())
+	}
+}
+
+// minimalIssueJSON is the body the fake server returns for the
+// verification GET that follows every confirmed issues update.
+const minimalIssueJSON = `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"done_ratio":0}}`
+
+// updateVerifyServer fakes the three calls a confirmed update can make:
+// the preflight GET (include=allowed_statuses), the PUT, and the
+// verification GET. preflightBody / verifyBody are returned as-is; the PUT
+// answers 204. It records how many PUTs were sent.
+func updateVerifyServer(t *testing.T, preflightBody, verifyBody string, verifyStatus int) (*api.Client, *int32, func()) {
+	t.Helper()
+	var puts int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/issues/7.json" && r.Method == "PUT":
+			atomic.AddInt32(&puts, 1)
+			w.WriteHeader(204)
+		case r.URL.Path == "/issues/7.json" && r.URL.Query().Get("include") == "allowed_statuses":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(preflightBody))
+		case r.URL.Path == "/issues/7.json" && r.Method == "GET":
+			w.Header().Set("Content-Type", "application/json")
+			if verifyStatus != 0 {
+				w.WriteHeader(verifyStatus)
+			}
+			_, _ = w.Write([]byte(verifyBody))
+		case r.URL.Path == "/users/current.json":
+			_, _ = w.Write([]byte(`{"user":{"id":9,"login":"me"}}`))
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
+			w.WriteHeader(404)
+		}
+	}))
+	return api.New(srv.URL, "k", srv.Client()), &puts, srv.Close
+}
+
+const issueNewWithTransitions = `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"allowed_statuses":[{"id":1,"name":"New"},{"id":2,"name":"In Progress"}]}}`
+
+// A status outside allowed_statuses is refused before the PUT, with the
+// allowed transitions named, as a plain validation error (exit 1).
+func TestIssuesUpdate_StatusPreflight_RefusesDisallowed(t *testing.T) {
+	c, puts, stop := updateVerifyServer(t, issueNewWithTransitions, minimalIssueJSON, 0)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--status", "5", "--notes", "closing", "--confirm"})
+	err := root.Execute()
+	if !errors.Is(err, ErrStatusNotAllowed) {
+		t.Fatalf("err=%v, want ErrStatusNotAllowed", err)
+	}
+	for _, want := range []string{"status 5", "issue #7", "current status: New (1)", "New (1)", "In Progress (2)"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err=%q, want to contain %q", err.Error(), want)
+		}
+	}
+	if code := exitCodeFor(err); code != 1 {
+		t.Errorf("exit code=%d, want 1", code)
+	}
+	if got := atomic.LoadInt32(puts); got != 0 {
+		t.Errorf("PUT calls=%d, want 0", got)
+	}
+	if out.Len() != 0 {
+		t.Errorf("stdout should be empty, got:\n%s", out.String())
+	}
+}
+
+// An empty allowed_statuses list means the role has no transitions on
+// this tracker; the update is refused with a message saying so.
+func TestIssuesUpdate_StatusPreflight_RefusesWhenNoTransitions(t *testing.T) {
+	body := `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"allowed_statuses":[]}}`
+	c, puts, stop := updateVerifyServer(t, body, minimalIssueJSON, 0)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--status", "2", "--confirm"})
+	err := root.Execute()
+	if !errors.Is(err, ErrStatusNotAllowed) {
+		t.Fatalf("err=%v, want ErrStatusNotAllowed", err)
+	}
+	if !strings.Contains(err.Error(), "no status transitions") {
+		t.Errorf("err=%q, want 'no status transitions'", err.Error())
+	}
+	if got := atomic.LoadInt32(puts); got != 0 {
+		t.Errorf("PUT calls=%d, want 0", got)
+	}
+}
+
+// Older Redmine versions omit allowed_statuses entirely; the preflight is
+// skipped and the PUT goes out.
+func TestIssuesUpdate_StatusPreflight_SkippedWhenKeyAbsent(t *testing.T) {
+	applied := `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":5,"name":"Closed"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"}}}`
+	c, puts, stop := updateVerifyServer(t, minimalIssueJSON, applied, 0)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--status", "5", "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got := atomic.LoadInt32(puts); got != 1 {
+		t.Errorf("PUT calls=%d, want 1", got)
+	}
+	if got := out.String(); got != "Updated issue #7 (status: Closed (5)).\n" {
+		t.Errorf("stdout=%q", got)
+	}
+}
+
+// The dry run never preflights or verifies: no request reaches the server.
+func TestIssuesUpdate_StatusPreflight_NotInDryRun(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode (%s %s)", r.Method, r.URL.String())
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--status", "5"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("dry-run failed: %v", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["dry_run"] != true {
+		t.Errorf("dry_run flag missing: %v", got)
+	}
+}
+
+// The server answers 204 but the re-read issue still has the old status:
+// the success line is printed (notes were saved), a warning names the
+// dropped field, and the command exits 1.
+func TestIssuesUpdate_Verify_ReportsDroppedStatus(t *testing.T) {
+	// Preflight allows 5, server drops it anyway (e.g. a plugin or a
+	// race with a workflow change).
+	preflight := `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"allowed_statuses":[{"id":5,"name":"Closed"}]}}`
+	after := `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"done_ratio":100}}`
+	c, puts, stop := updateVerifyServer(t, preflight, after, 0)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--status", "5", "--done", "100", "--notes", "closing", "--confirm"})
+	err := root.Execute()
+	if !errors.Is(err, ErrUpdateNotApplied) {
+		t.Fatalf("err=%v, want ErrUpdateNotApplied", err)
+	}
+	if !strings.HasSuffix(err.Error(), ": status") {
+		t.Errorf("err=%q, want to end with ': status'", err.Error())
+	}
+	if code := exitCodeFor(err); code != 1 {
+		t.Errorf("exit code=%d, want 1", code)
+	}
+	if got := atomic.LoadInt32(puts); got != 1 {
+		t.Errorf("PUT calls=%d, want 1", got)
+	}
+	if got := out.String(); got != "Updated issue #7 (status: New (1), done: 100%).\n" {
+		t.Errorf("stdout=%q", got)
+	}
+	for _, want := range []string{"warning: status was not applied by the server", "requested 5", "issue has New (1)", "workflow"} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Errorf("stderr missing %q:\n%s", want, errOut.String())
+		}
+	}
+	if strings.Contains(errOut.String(), "done was not applied") {
+		t.Errorf("done was applied and must not be warned about:\n%s", errOut.String())
+	}
+}
+
+// Every sent field is reflected by the server: informative success line,
+// exit 0, and the JSON document carries the re-read issue.
+func TestIssuesUpdate_Verify_AllApplied_JSON(t *testing.T) {
+	after := `{"issue":{"id":7,"subject":"new subject","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":2,"name":"In Progress"},"priority":{"id":3,"name":"High"},"author":{"id":1,"name":"A"},"assigned_to":{"id":9,"name":"Me Myself"},"category":{"id":4,"name":"Backend"},"start_date":"2026-01-02","due_date":"2026-01-09","done_ratio":50,"custom_fields":[{"id":11,"name":"Env","value":"prod"}]}}`
+	c, puts, stop := updateVerifyServer(t, issueNewWithTransitions, after, 0)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7",
+		"--status", "2", "--priority", "3", "--assignee", "me", "--category", "4",
+		"--start-date", "2026-01-02", "--due-date", "2026-01-09", "--done", "50",
+		"--subject", "new subject", "--cf", "11=prod", "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v (stderr: %s)", err, errOut.String())
+	}
+	if got := atomic.LoadInt32(puts); got != 1 {
+		t.Errorf("PUT calls=%d, want 1", got)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("stderr should be empty, got:\n%s", errOut.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["updated"] != true || got["id"] != float64(7) {
+		t.Errorf("updated/id wrong: %v", got)
+	}
+	if _, present := got["not_applied"]; present {
+		t.Errorf("not_applied must be absent when everything took: %v", got["not_applied"])
+	}
+	issue, _ := got["issue"].(map[string]any)
+	status, _ := issue["status"].(map[string]any)
+	if status["id"] != float64(2) {
+		t.Errorf("issue.status wrong: %v", issue["status"])
+	}
+}
+
+// Markdown success line lists every sent field with its resulting value.
+func TestIssuesUpdate_Verify_AllApplied_MarkdownLine(t *testing.T) {
+	after := `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":2,"name":"In Progress"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"assigned_to":{"id":42,"name":"Ada"},"done_ratio":100,"custom_fields":[{"id":11,"name":"Env","value":"prod"}]}}`
+	c, _, stop := updateVerifyServer(t, issueNewWithTransitions, after, 0)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--status", "2", "--assignee", "42", "--done", "100", "--cf", "11=prod", "--category", "", "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v (stderr: %s)", err, errOut.String())
+	}
+	want := "Updated issue #7 (status: In Progress (2), assignee: Ada (42), category: none, done: 100%, Env: \"prod\").\n"
+	if out.String() != want {
+		t.Errorf("stdout=%q\nwant  =%q", out.String(), want)
+	}
+}
+
+// A dropped assignee and a dropped custom field are both reported; JSON
+// lists them in not_applied.
+func TestIssuesUpdate_Verify_ReportsDroppedAssigneeAndCF(t *testing.T) {
+	after := `{"issue":{"id":7,"subject":"hi","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":2,"name":"Normal"},"author":{"id":1,"name":"A"},"custom_fields":[{"id":11,"name":"Env","value":""}]}}`
+	c, _, stop := updateVerifyServer(t, minimalIssueJSON, after, 0)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--assignee", "42", "--cf", "11=prod", "--confirm"})
+	err := root.Execute()
+	if !errors.Is(err, ErrUpdateNotApplied) {
+		t.Fatalf("err=%v, want ErrUpdateNotApplied", err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	na, _ := got["not_applied"].([]any)
+	if len(na) != 2 || na[0] != "assignee" || na[1] != "Env" {
+		t.Errorf("not_applied=%v, want [assignee Env]", got["not_applied"])
+	}
+	for _, want := range []string{"warning: assignee was not applied by the server: requested 42, issue has none", "warning: Env was not applied by the server: requested \"prod\", issue has \"\""} {
+		if !strings.Contains(errOut.String(), want) {
+			t.Errorf("stderr missing %q:\n%s", want, errOut.String())
+		}
+	}
+}
+
+// When the verification read fails, the update is still reported as sent
+// (it was), a warning says it could not be verified, and the exit is 0.
+func TestIssuesUpdate_Verify_ReadFails_WarnsAndSucceeds(t *testing.T) {
+	c, puts, stop := updateVerifyServer(t, minimalIssueJSON, `{"errors":["nope"]}`, 403)
+	defer stop()
+
+	var out, errOut bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &errOut, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "7", "--notes", "x", "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if got := atomic.LoadInt32(puts); got != 1 {
+		t.Errorf("PUT calls=%d, want 1", got)
+	}
+	if !strings.Contains(errOut.String(), "warning: could not verify update of issue #7") {
+		t.Errorf("stderr missing verification warning:\n%s", errOut.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["updated"] != true || got["id"] != float64(7) {
+		t.Errorf("output=%v", got)
+	}
+	if _, present := got["issue"]; present {
+		t.Errorf("issue must be absent when it could not be read: %v", got)
+	}
+}
+
+// issues get --include allowed_statuses forwards the include and renders
+// the transitions in markdown and JSON.
+func TestIssuesGet_IncludeAllowedStatuses(t *testing.T) {
+	var seen string
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = r.URL.RawQuery
+		_, _ = w.Write([]byte(issueNewWithTransitions))
+	})
+	defer stop()
+
+	for _, format := range []string{"markdown", "json"} {
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: format}
+		root := buildRootForTest(rc)
+		root.SetArgs([]string{"issues", "get", "7", "--include", "allowed_statuses"})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%s: %v", format, err)
+		}
+		if seen != "include=allowed_statuses" {
+			t.Errorf("%s: query=%q", format, seen)
+		}
+		if format == "markdown" {
+			if !strings.Contains(out.String(), "## Allowed statuses\n\n- New (1)\n- In Progress (2)\n") {
+				t.Errorf("markdown missing allowed statuses section:\n%s", out.String())
+			}
+			continue
+		}
+		var got map[string]any
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatalf("not JSON: %v\n%s", err, out.String())
+		}
+		issue, _ := got["issue"].(map[string]any)
+		allowed, _ := issue["allowed_statuses"].([]any)
+		if len(allowed) != 2 {
+			t.Errorf("json allowed_statuses=%v", issue["allowed_statuses"])
+		}
+	}
+}
+
+func TestVerifyUpdate_TextNormalization(t *testing.T) {
+	rc := &runCtx{out: &bytes.Buffer{}, errOut: &bytes.Buffer{}}
+	subject := "  Title "
+	desc := "line one\r\nline two\r\n"
+	payload := api.IssueUpdate{Subject: &subject, Description: &desc}
+	fresh := &api.Issue{Subject: "Title", Description: "line one\nline two"}
+	for _, c := range verifyUpdate(rc, payload, fresh) {
+		if !c.Applied {
+			t.Errorf("%s reported as not applied although only whitespace/line endings differ", c.Name)
+		}
+	}
+	other := "Other"
+	for _, c := range verifyUpdate(rc, api.IssueUpdate{Subject: &other}, fresh) {
+		if c.Applied {
+			t.Errorf("%s reported as applied although the text differs", c.Name)
+		}
 	}
 }

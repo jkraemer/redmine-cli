@@ -136,7 +136,7 @@ func newIssuesGetCmd(rc *runCtx) *cobra.Command {
 			return renderIssueDetail(rc, issue)
 		},
 	}
-	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, watchers, checklists (requires the redmine_checklists plugin)")
+	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, watchers, allowed_statuses (status transitions your role may make; Redmine 5.0+), checklists (requires the redmine_checklists plugin)")
 	return cmd
 }
 
@@ -270,7 +270,20 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update an existing issue (requires --confirm to send)",
-		Args:  cobra.ExactArgs(1),
+		Long: "Updates an issue; only the flags you pass are sent. With --confirm " +
+			"and --status, the issue is first fetched with include=allowed_statuses " +
+			"and the update is refused (exit 1) if the target status is not a " +
+			"transition your role may make. After a confirmed update the issue is " +
+			"re-read and every sent field is verified: fields the server silently " +
+			"dropped are reported on stderr and the command exits 1 (notes and the " +
+			"other fields were still saved).",
+		Annotations: map[string]string{
+			"agent-notes": "Redmine answers 200 even when it drops a field (status not allowed by the workflow, user not assignable). " +
+				"With --confirm and --status the CLI preflights include=allowed_statuses and refuses a disallowed transition with exit 1 before sending. " +
+				"After a confirmed update it re-reads the issue and verifies every sent field; a dropped field is reported on stderr, listed in not_applied (JSON), and the command exits 1 although notes and other fields were saved. " +
+				"Use `issues get <id> --include allowed_statuses` to see valid transitions first.",
+		},
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.Atoi(args[0])
 			if err != nil {
@@ -354,6 +367,13 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			}
 
 			path := fmt.Sprintf("/issues/%d.json", id)
+			// Preflight before any upload so a refused status leaves no
+			// orphan attachments behind. Dry runs never preflight.
+			if confirm && payload.StatusID != nil {
+				if err := preflightStatus(rc, id, *payload.StatusID); err != nil {
+					return err
+				}
+			}
 			if err := applyAttachments(rc.ctx(), rc.client, specs, &payload.Uploads, confirm); err != nil {
 				return err
 			}
@@ -364,12 +384,18 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			if err := rc.client.UpdateIssue(rc.ctx(), id, payload); err != nil {
 				return err
 			}
-			// Redmine returns 204 on update; emit a small confirmation.
-			if rc.format == "markdown" {
-				_, err := fmt.Fprintf(rc.out, "Updated issue #%d.\n", id)
-				return err
+			// Redmine returns 204 on update and drops fields it will not
+			// apply without any error, so re-read the issue and verify.
+			fresh, err := rc.client.GetIssue(rc.ctx(), id, nil)
+			if err != nil {
+				fmt.Fprintf(rc.errOut, "warning: could not verify update of issue #%d: %v\n", id, err)
+				if rc.format == "markdown" {
+					_, err := fmt.Fprintf(rc.out, "Updated issue #%d.\n", id)
+					return err
+				}
+				return output.JSON(rc.out, map[string]any{"updated": true, "id": id})
 			}
-			return output.JSON(rc.out, map[string]any{"updated": true, "id": id})
+			return reportUpdate(rc, id, fresh, verifyUpdate(rc, payload, fresh))
 		},
 	}
 	cmd.Flags().StringVar(&subject, "subject", "", "New subject")
@@ -468,6 +494,15 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 			fmt.Fprintf(&b, "\n## Watchers\n\n")
 			for _, w := range is.Watchers {
 				fmt.Fprintf(&b, "- %s\n", clean(w.Name))
+			}
+		}
+		if is.AllowedStatuses != nil {
+			fmt.Fprintf(&b, "\n## Allowed statuses\n\n")
+			if len(is.AllowedStatuses) == 0 {
+				fmt.Fprintf(&b, "(none: your role has no status transitions on this tracker)\n")
+			}
+			for _, s := range is.AllowedStatuses {
+				fmt.Fprintf(&b, "- %s (%d)\n", clean(s.Name), s.ID)
 			}
 		}
 		_, err := fmt.Fprint(rc.out, b.String())
