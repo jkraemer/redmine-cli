@@ -105,11 +105,9 @@ Notes:
 - **Write ops are dry-run by default.** Always inspect the preview before adding `--confirm`.
 - `--text` and `--text-file` are mutually exclusive; exactly one is required.
 - Page content uses Redmine's configured markup format - by default this is **CommonMark** (GitHub-flavored Markdown).
-- **Redmine wiki internal links** use the `[[Page Title]]` syntax:
-  - `[[Gitolite-Integration]]` — linked page title shown as display text
-  - `[[Gitolite-Integration|Integration Docs]]` — custom display text
-  - NOT standard markdown `[text](url)` or Textile links — Redmine's renderers handle `[[ ]]` natively
 - Wiki content is sent as raw text via `--text` — Redmine parses it according to the project's markup setting. No need to pre-render or wrap in HTML.
+- Link other pages with `[[Page]]`, not `[text](url)`; see
+  [Redmine formatting](#redmine-formatting) for the link shorthands and macros.
 
 ## Quick Reference — Read
 
@@ -193,6 +191,10 @@ it unchanged.
 `--notes-file <path>` reads the entire file (whitespace preserved) and
 sends it as the `notes` field. Mutually exclusive with `--notes`.
 
+Descriptions and notes use the same markup as wiki pages; see
+[Redmine formatting](#redmine-formatting) for the link shorthands
+(`#1234`, `attachment:file.png`, `[[Page]]`) and macros.
+
 ### Custom fields
 
 `--cf <id>=<value>` is repeatable on both `issues create` and
@@ -206,6 +208,54 @@ Pass exactly one of `--issue <id>` or `--project <id-or-identifier>`,
 never both. Server-side validation (422) will reject invalid
 combinations or disabled activities — the CLI surfaces these with
 exit code 1 and the raw error message.
+
+## Redmine formatting
+
+Issue descriptions, journal notes (`--notes`, `--notes-file`) and wiki
+pages are all rendered with the same markup, so everything here applies
+to all three.
+
+- The markup is the instance's **text formatting** setting: CommonMark
+  (Markdown) or Textile. The API does not expose the setting — when
+  unsure, look at an existing page or issue description first.
+- Redmine serves its own reference for the configured format at
+  `<REDMINE_URL>/help/wiki_syntax.html` (quick reference) and the
+  detailed pages `<REDMINE_URL>/help/en/wiki_syntax_detailed_common_mark.html`
+  and `<REDMINE_URL>/help/en/wiki_syntax_detailed_textile.html`. Use
+  those, not GitHub Flavored Markdown: task lists are not supported,
+  tables and code fences differ, and Redmine adds macros.
+
+### Link shorthands
+
+Redmine turns these into links in either format; prefer them over
+spelling out names or URLs.
+
+| Syntax | Links to |
+|--------|----------|
+| `#1234` | issue 1234 |
+| `commit:abc1234` | a revision in the project repository |
+| `source:path/file.rb#L10` | a file (and line) in the project repository |
+| `[[Page]]` | wiki page `Page` (title is case-sensitive, matches the URL slug) |
+| `attachment:name.png` | a file attached to the same issue or page |
+| `version:"1.0"` | a version (milestone) |
+| `user:login` | a user |
+| `document:"Title"` | a document |
+
+`[[Page|label]]` links a wiki page with custom link text; use this
+form instead of `[text](url)` or Textile links, both renderers handle
+`[[ ]]` natively.
+
+Inline images from attachments: `![](name.png)` in CommonMark,
+`!attachment:name.png!` in Textile.
+
+Macros (same in both formats): `{{toc}}` (table of contents),
+`{{collapse(Title) ... }}` (collapsible block, closed with `}}` on its
+own line), `{{include(Page)}}` (embed another wiki page).
+
+Rule of thumb: link things instead of naming them. When a file was
+uploaded with `--attach`, reference it as `attachment:<filename>` in the
+same request's notes, description or page text, so screenshots show
+inline.
 
 ## --all auto-pagination
 
