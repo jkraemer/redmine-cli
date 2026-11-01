@@ -64,6 +64,14 @@ it next to this file. Pass a version argument (e.g. `0.1.0`) to pin.
 6. **Look up IDs first.** Use `trackers list`, `statuses list`,
    `priorities list`, `time-activities list`, `users me`/`users list`
    instead of guessing numeric IDs.
+7. **Check allowed statuses before changing one.** A status change only
+   takes effect if the user's role may make that transition in the
+   project workflow; Redmine drops a disallowed transition silently
+   (HTTP 200, the CLI reports success, the status stays unchanged). Run
+   `issues get <id> --include allowed_statuses` first and pick only from
+   that list. An empty list means the role has no transitions on this
+   tracker — report that to the user instead of retrying.
+   `statuses list` is the global list, not what is allowed on an issue.
 
 ## CLI Introspection
 
@@ -126,10 +134,14 @@ Notes:
 | Get full issue with journals | `redmine-cli issues get 1459 --include journals,attachments` |
 | Get issue with watchers | `redmine-cli issues get 1459 --include watchers` |
 | Get issue with checklist items | `redmine-cli issues get 1459 --include checklists` |
+| Statuses allowed on an issue | `redmine-cli issues get 42 --include allowed_statuses` |
 | Download attachment | `redmine-cli attachments download 42` |
 | Save attachment to a path | `redmine-cli attachments download 42 -o /tmp/foo.png` |
 
 Notes:
+- `--include allowed_statuses` returns the status transitions the current
+  user may make on that issue (`allowed_statuses`, each with `id` and
+  `name`). Older Redmine versions omit the key entirely.
 - `--include checklists` needs the redmine_checklists plugin. Each item has `subject` and `is_done`. A 404 (exit 2) on an issue that exists means the plugin is missing or you lack the "View checklists" permission. Section headers are indistinguishable from undone items.
 
 ## Quick Reference — Lookups
@@ -165,6 +177,7 @@ Scopes: `--scope all|my_projects|subprojects` (default = `all`).
 | Preview new issue | `redmine-cli issues create --project myproj --tracker 1 --subject "Title" --description "..."` |
 | Create issue | append `--confirm` to the above |
 | Issue with custom fields | append `--cf 5=hello --cf 7=world` |
+| Check which statuses are allowed | `redmine-cli issues get 42 --include allowed_statuses` (do this before `--status`) |
 | Preview update | `redmine-cli issues update 42 --status 5 --notes "Closing"` |
 | Update issue | append `--confirm` |
 | Add comment only | `redmine-cli issues update 42 --notes "FYI" --confirm` |
@@ -187,6 +200,13 @@ Scopes: `--scope all|my_projects|subprojects` (default = `all`).
 `issues update` uses pointer semantics: only flags you pass are sent. Pass
 `--description ""` explicitly to clear the description; omit it to leave
 it unchanged.
+
+`--status <id>` is only applied if the transition from the current status
+is allowed for your role in the project workflow. Redmine answers a
+disallowed transition with HTTP 200 and keeps the old status; other
+fields in the same request (notes, done ratio) are still saved. Check
+`issues get <id> --include allowed_statuses` before sending a status
+change, and verify with `issues get` afterwards when it matters.
 
 ### Notes from a file
 
