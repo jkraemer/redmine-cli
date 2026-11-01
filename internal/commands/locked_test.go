@@ -19,6 +19,9 @@ import (
 // attachment 42.
 const attachmentBytes = "\x00raw attachment bytes\xff"
 
+// wikiPageText is the source of wiki page "Page" served by newLockedServer.
+const wikiPageText = "h1. locked"
+
 // newLockedServer starts a fake Redmine that counts every request it
 // receives. It answers issues list and attachment 42 (metadata + content).
 func newLockedServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
@@ -36,6 +39,9 @@ func newLockedServer(t *testing.T) (*httptest.Server, *atomic.Int32) {
 			fmt.Fprintf(w, `{"attachment":{"id":42,"filename":"f.bin","filesize":%d,"content_type":"application/octet-stream","content_url":"%s/attachments/download/42/f.bin"}}`, len(attachmentBytes), srv.URL)
 		case "/attachments/download/42/f.bin":
 			_, _ = w.Write([]byte(attachmentBytes))
+		case "/projects/P/wiki/Page.json":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"wiki_page":{"title":"Page","text":"` + wikiPageText + `","version":1,"author":{"id":1,"name":"A"},"created_on":"2026-01-01","updated_on":"2026-01-01"}}`))
 		default:
 			w.WriteHeader(204)
 		}
@@ -251,6 +257,31 @@ func TestLocked_RefusesDownloadToPath(t *testing.T) {
 	}
 	if out != attachmentBytes {
 		t.Errorf("out=%q, want raw bytes %q", out, attachmentBytes)
+	}
+}
+
+// wiki get -o shares the attachments download rule: locked mode may not
+// write local files, so only - (stdout) is accepted.
+func TestLocked_RefusesWikiGetToPath(t *testing.T) {
+	srv, hits := newLockedServer(t)
+	lockedEnv(t, srv.URL)
+	dest := filepath.Join(t.TempDir(), "page.md")
+
+	_, err := runLocked(t, "wiki", "get", "Page", "--project", "P", "-o", dest)
+	assertLockedRefusal(t, err)
+	if n := hits.Load(); n != 0 {
+		t.Errorf("hits=%d, want 0", n)
+	}
+	if _, statErr := os.Stat(dest); !os.IsNotExist(statErr) {
+		t.Errorf("destination file was created (stat err=%v)", statErr)
+	}
+
+	out, err := runLocked(t, "wiki", "get", "Page", "--project", "P", "-o", "-")
+	if err != nil {
+		t.Fatalf("wiki get -o -: %v", err)
+	}
+	if out != wikiPageText {
+		t.Errorf("out=%q, want raw page source %q", out, wikiPageText)
 	}
 }
 

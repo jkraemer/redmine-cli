@@ -3,9 +3,12 @@ package commands
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -285,5 +288,221 @@ func TestWikiPut_Attach_MidBatchUploadFailure(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&putCalls); got != 0 {
 		t.Errorf("put calls=%d, want 0", got)
+	}
+}
+
+// wikiPageServer answers GET /projects/P/wiki/<title>.json with the given
+// page text (JSON-encoded, so CR/LF bytes survive the round trip).
+func wikiPageServer(t *testing.T, text string) (*api.Client, func()) {
+	t.Helper()
+	encoded, err := json.Marshal(text)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" || !strings.HasPrefix(r.URL.Path, "/projects/P/wiki/") {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(404)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"wiki_page":{"title":"MyPage","text":` + string(encoded) + `,"version":7,"author":{"id":1,"name":"A"},"created_on":"2026-01-01","updated_on":"2026-01-02"}}`))
+	})
+}
+
+// A page with mixed CRLF/LF lines and no trailing newline must come out of
+// --raw byte for byte, so an edit/put round trip preserves it.
+const mixedLineEndings = "a\r\nb\nc"
+
+func TestWikiGet_Raw_BytesUntouched(t *testing.T) {
+	c, stop := wikiPageServer(t, mixedLineEndings)
+	defer stop()
+
+	cases := []struct {
+		format string
+		args   []string
+	}{
+		{"json", []string{"wiki", "get", "MyPage", "--project", "P", "--raw"}},
+		{"json", []string{"wiki", "get", "MyPage", "--project", "P", "-o", "-"}},
+		{"json", []string{"wiki", "get", "MyPage", "--project", "P", "--raw", "-o", "-"}},
+		// --raw ignores the output format: no markdown header either.
+		{"markdown", []string{"wiki", "get", "MyPage", "--project", "P", "--raw"}},
+	}
+	for _, tc := range cases {
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: tc.format}
+		root := buildRootForTest(rc)
+		root.SetArgs(tc.args)
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%v (%s): %v", tc.args, tc.format, err)
+		}
+		if got := out.String(); got != mixedLineEndings {
+			t.Errorf("%v (%s): out=%q, want %q", tc.args, tc.format, got, mixedLineEndings)
+		}
+	}
+}
+
+func TestWikiGet_OutFile_WritesSourceAndPrintsPath(t *testing.T) {
+	c, stop := wikiPageServer(t, mixedLineEndings)
+	defer stop()
+	dest := filepath.Join(t.TempDir(), "page.md")
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "get", "MyPage", "--project", "P", "-o", dest})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != mixedLineEndings {
+		t.Errorf("file=%q, want %q", data, mixedLineEndings)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["path"] != dest || got["title"] != "MyPage" || got["version"] != float64(7) {
+		t.Errorf("output=%v", got)
+	}
+
+	out.Reset()
+	rc.format = "markdown"
+	root = buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "get", "MyPage", "--project", "P", "--out", dest})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	want := "Saved wiki page \"MyPage\" (version 7) to `" + dest + "`\n"
+	if out.String() != want {
+		t.Errorf("markdown out=%q, want %q", out.String(), want)
+	}
+}
+
+func TestWikiGet_RawAndOutPath_MutuallyExclusive(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called (path=%s)", r.URL.Path)
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "get", "MyPage", "--project", "P", "--raw", "-o", "x.md"})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+		t.Errorf("err=%v, want mutually exclusive error", err)
+	}
+}
+
+// wiki get -j carries the page version: the round-trip workflow passes it
+// back to wiki put --version.
+func TestWikiGet_JSON_HasVersion(t *testing.T) {
+	c, stop := wikiPageServer(t, "hello")
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "get", "MyPage", "--project", "P"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out.String())
+	}
+	if got["version"] != float64(7) {
+		t.Errorf("version=%v, want 7 in %s", got["version"], out.String())
+	}
+}
+
+func TestWikiPut_Version_DryRunBody(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode (path=%s)", r.URL.Path)
+	})
+	defer stop()
+
+	run := func(args ...string) map[string]any {
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+		root := buildRootForTest(rc)
+		root.SetArgs(append([]string{"wiki", "put", "MyPage", "--project", "P", "--text", "hello"}, args...))
+		if err := root.Execute(); err != nil {
+			t.Fatalf("dry-run failed: %v", err)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatalf("not JSON: %v\n%s", err, out.String())
+		}
+		body, _ := got["body"].(map[string]any)
+		page, _ := body["wiki_page"].(map[string]any)
+		return page
+	}
+	if page := run("--version", "7"); page["version"] != float64(7) {
+		t.Errorf("version=%v, want 7", page["version"])
+	}
+	if page := run(); page["version"] != nil {
+		t.Errorf("version present without --version: %v", page["version"])
+	}
+}
+
+func TestWikiPut_Version_SentOnConfirm(t *testing.T) {
+	var putBody []byte
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "PUT" {
+			putBody, _ = io.ReadAll(r.Body)
+			w.WriteHeader(204)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"wiki_page":{"title":"MyPage","text":"hello","version":8,"author":{"id":1,"name":"A"},"created_on":"2026-01-01","updated_on":"2026-01-01"}}`))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "put", "MyPage", "--project", "P", "--text", "hello", "--version", "7", "--confirm"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var bodyJSON map[string]any
+	if err := json.Unmarshal(putBody, &bodyJSON); err != nil {
+		t.Fatalf("put body not JSON: %v", err)
+	}
+	page, _ := bodyJSON["wiki_page"].(map[string]any)
+	if page["version"] != float64(7) {
+		t.Errorf("version=%v, want 7 in %s", page["version"], putBody)
+	}
+}
+
+func TestWikiPut_Version_Conflict(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(409)
+		_, _ = w.Write([]byte(`{"errors":["Page has been updated by another user"]}`))
+	})
+	defer stop()
+
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"wiki", "put", "MyPage", "--project", "P", "--text", "hello", "--version", "7", "--confirm"})
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	for _, want := range []string{"modified", "version 7", "--version"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err=%q, want to contain %q", err.Error(), want)
+		}
+	}
+	var apiErr *api.Error
+	if !errors.As(err, &apiErr) || apiErr.Status != 409 {
+		t.Errorf("err=%v, want wrapped *api.Error 409", err)
+	}
+	if code := exitCodeFor(err); code != 1 {
+		t.Errorf("exit code=%d, want 1", code)
 	}
 }
