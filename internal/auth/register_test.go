@@ -43,6 +43,7 @@ func newRegistrationServer(t *testing.T, metadataPath, issuerPath string) *regis
 		json.NewEncoder(w).Encode(map[string]any{
 			"client_id":     "new-client-id",
 			"client_secret": "ignored-secret",
+			"scope":         "view_project view_issues",
 		})
 	})
 	rs.Server = httptest.NewServer(mux)
@@ -53,12 +54,15 @@ func newRegistrationServer(t *testing.T, metadataPath, issuerPath string) *regis
 func TestRegisterClient_DiscoversAndRegistersPublicClient(t *testing.T) {
 	srv := newRegistrationServer(t, "/.well-known/oauth-authorization-server", "")
 
-	id, err := RegisterClient(srv.URL, "redmine-cli")
+	reg, err := RegisterClient(srv.URL, "redmine-cli")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "new-client-id" {
-		t.Errorf("client id=%q want new-client-id", id)
+	if reg.ClientID != "new-client-id" {
+		t.Errorf("client id=%q want new-client-id", reg.ClientID)
+	}
+	if !reflect.DeepEqual(reg.Scopes, []string{"view_project", "view_issues"}) {
+		t.Errorf("scopes=%v want [view_project view_issues]", reg.Scopes)
 	}
 	if srv.gotContentType != "application/json" {
 		t.Errorf("Content-Type=%q want application/json", srv.gotContentType)
@@ -88,12 +92,12 @@ func TestRegisterClient_TrailingSlashInBaseURL(t *testing.T) {
 func TestRegisterClient_SubPathInstallUsesPathInsertion(t *testing.T) {
 	srv := newRegistrationServer(t, "/.well-known/oauth-authorization-server/redmine", "/redmine")
 
-	id, err := RegisterClient(srv.URL+"/redmine", "redmine-cli")
+	reg, err := RegisterClient(srv.URL+"/redmine", "redmine-cli")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if id != "new-client-id" {
-		t.Errorf("client id=%q", id)
+	if reg.ClientID != "new-client-id" {
+		t.Errorf("client id=%q", reg.ClientID)
 	}
 }
 
@@ -171,6 +175,30 @@ func TestRegisterClient_RegistrationErrorIsReported(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "\x1b") {
 		t.Errorf("err=%q contains terminal control bytes", err.Error())
+	}
+}
+
+func TestRegisterClient_NoScopeInResponseYieldsNoScopes(t *testing.T) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/register" {
+			w.WriteHeader(http.StatusCreated)
+			w.Write([]byte(`{"client_id":"cid"}`))
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]any{
+			"issuer":                srv.URL,
+			"registration_endpoint": srv.URL + "/register",
+		})
+	}))
+	defer srv.Close()
+
+	reg, err := RegisterClient(srv.URL, "redmine-cli")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reg.Scopes) != 0 {
+		t.Errorf("scopes=%v want none", reg.Scopes)
 	}
 }
 

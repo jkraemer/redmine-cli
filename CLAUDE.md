@@ -65,8 +65,9 @@ else lives under `internal/`:
   granted scope. `RegisterClient` (`register.go`) does RFC 8414 discovery
   + RFC 7591 registration as a public client; `auth login` calls it when
   no `oauth_client_id` is set (config via `config.LoadForLogin`, which
-  skips the credentials check) and persists the id with
-  `cfg.SaveClientID`. The `auth.Token` struct and its `Expired()` helper live
+  skips the credentials check) and persists the id — plus the
+  registered scopes as `oauth_scopes` unless already set — with
+  `cfg.SaveRegistration`. The `auth.Token` struct and its `Expired()` helper live
   in `token.go`; token persistence is in `internal/config` (see above).
 - `internal/output/` — JSON (2-space, no HTML escaping) and Markdown
   table rendering. Format chosen by `--format` flag, then config

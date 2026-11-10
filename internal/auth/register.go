@@ -26,11 +26,20 @@ type serverMetadata struct {
 	RegistrationEndpoint string `json:"registration_endpoint"`
 }
 
+// Registration is the outcome of a successful client registration.
+type Registration struct {
+	ClientID string
+	// Scopes the client was registered with, from the response's "scope"
+	// (RFC 7591 §3.2.1). Empty if the server did not report any.
+	Scopes []string
+}
+
 // registrationResponse is the subset of an RFC 7591 registration response
 // (or error response) the CLI uses. Any client_secret in the response is
 // deliberately ignored: the CLI registers as a public client and uses PKCE.
 type registrationResponse struct {
 	ClientID  string `json:"client_id"`
+	Scope     string `json:"scope"`
 	Error     string `json:"error"`
 	ErrorDesc string `json:"error_description"`
 }
@@ -38,11 +47,12 @@ type registrationResponse struct {
 // RegisterClient discovers the authorization server metadata for the
 // Redmine at baseURL (RFC 8414) and registers a public OAuth client named
 // clientName at its registration endpoint (RFC 7591), using the
-// out-of-band redirect URI. It returns the issued client_id.
-func RegisterClient(baseURL, clientName string) (string, error) {
+// out-of-band redirect URI. It returns the issued client_id and the scopes
+// the client was registered with.
+func RegisterClient(baseURL, clientName string) (*Registration, error) {
 	md, err := discoverMetadata(baseURL)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	body, err := json.Marshal(map[string]any{
 		"client_name":                clientName,
@@ -52,26 +62,26 @@ func RegisterClient(baseURL, clientName string) (string, error) {
 		"token_endpoint_auth_method": "none",
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	resp, err := httpClient.Post(md.RegistrationEndpoint, "application/json", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("client registration: %w", err)
+		return nil, fmt.Errorf("client registration: %w", err)
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(resp.Body)
 	var rr registrationResponse
 	if err := json.Unmarshal(respBody, &rr); err != nil {
-		return "", fmt.Errorf("decode registration response (status %d): %w", resp.StatusCode, err)
+		return nil, fmt.Errorf("decode registration response (status %d): %w", resp.StatusCode, err)
 	}
 	// Server-controlled strings headed for stderr; see Exchange.
 	if rr.Error != "" {
-		return "", fmt.Errorf("client registration error %s: %s", output.SanitizeForTerminal(rr.Error), output.SanitizeForTerminal(rr.ErrorDesc))
+		return nil, fmt.Errorf("client registration error %s: %s", output.SanitizeForTerminal(rr.Error), output.SanitizeForTerminal(rr.ErrorDesc))
 	}
 	if rr.ClientID == "" {
-		return "", fmt.Errorf("no client_id in registration response (status %d): %s", resp.StatusCode, output.SanitizeForTerminal(string(respBody)))
+		return nil, fmt.Errorf("no client_id in registration response (status %d): %s", resp.StatusCode, output.SanitizeForTerminal(string(respBody)))
 	}
-	return rr.ClientID, nil
+	return &Registration{ClientID: rr.ClientID, Scopes: strings.Fields(rr.Scope)}, nil
 }
 
 // discoverMetadata fetches the RFC 8414 metadata for the issuer baseURL and

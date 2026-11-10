@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -62,16 +63,26 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 
 // registerClient obtains an OAuth client_id for cfg by dynamic client
 // registration and saves it to the config file, which switches the config
-// to OAuth even if it also holds an api_key.
+// to OAuth even if it also holds an api_key. Unless oauth_scopes is already
+// configured, the scopes the client was registered with are saved as
+// oauth_scopes too, so login requests them instead of Redmine's minimal
+// default scope.
 func registerClient(rc *runCtx, cfg *config.Config) error {
-	clientID, err := auth.RegisterClient(cfg.URL, "redmine-cli")
+	reg, err := auth.RegisterClient(cfg.URL, "redmine-cli")
 	if err != nil {
 		return fmt.Errorf("oauth_client_id not configured and registering a client failed: %w — register an OAuth application in Redmine and set oauth_client_id (see README)", err)
 	}
-	if err := cfg.SaveClientID(clientID); err != nil {
+	var scopes []string
+	if len(cfg.OAuthScopes) == 0 {
+		scopes = reg.Scopes
+	}
+	if err := cfg.SaveRegistration(reg.ClientID, scopes); err != nil {
 		return err
 	}
-	fmt.Fprintf(rc.out, "Registered OAuth client %s; saved as oauth_client_id in %s.\n", clientID, cfg.Path)
+	fmt.Fprintf(rc.out, "Registered OAuth client %s; saved as oauth_client_id in %s.\n", reg.ClientID, cfg.Path)
+	if len(scopes) > 0 {
+		fmt.Fprintf(rc.out, "Saved its scopes as oauth_scopes: %s\n", strings.Join(scopes, " "))
+	}
 	if cfg.APIKey != "" {
 		fmt.Fprintln(rc.out, "This config now uses OAuth; its api_key is no longer used.")
 	}

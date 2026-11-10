@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -42,6 +44,7 @@ func newOAuthServer(t *testing.T, noMetadata bool) *oauthServer {
 		json.NewEncoder(w).Encode(map[string]any{
 			"client_id":     "registered-id",
 			"client_secret": "unused-secret",
+			"scope":         "view_project view_issues",
 		})
 	})
 	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
@@ -81,6 +84,23 @@ func runAuthLogin(t *testing.T, p string) (string, error) {
 	return out.String(), err
 }
 
+// authorizeScope returns the scope parameter of the authorization URL that
+// `auth login` printed in out.
+func authorizeScope(t *testing.T, out string) string {
+	t.Helper()
+	for _, f := range strings.Fields(out) {
+		if strings.Contains(f, "/oauth/authorize?") {
+			u, err := url.Parse(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return u.Query().Get("scope")
+		}
+	}
+	t.Fatalf("no authorization URL in output:\n%s", out)
+	return ""
+}
+
 func TestAuthLogin_RegistersClientWhenNoneConfigured(t *testing.T) {
 	srv := newOAuthServer(t, false)
 	p := writeConfigFile(t, `url = "`+srv.URL+`"`+"\n")
@@ -101,6 +121,9 @@ func TestAuthLogin_RegistersClientWhenNoneConfigured(t *testing.T) {
 	if !strings.Contains(out, "client_id=registered-id") {
 		t.Errorf("authorize URL must use the registered client:\n%s", out)
 	}
+	if got := authorizeScope(t, out); got != "view_project view_issues" {
+		t.Errorf("authorize URL scope=%q want the registered scopes", got)
+	}
 	if !strings.Contains(out, "Registered OAuth client") {
 		t.Errorf("output does not mention the registration:\n%s", out)
 	}
@@ -112,11 +135,34 @@ func TestAuthLogin_RegistersClientWhenNoneConfigured(t *testing.T) {
 	if cfg.OAuthClientID != "registered-id" {
 		t.Errorf("saved oauth_client_id=%q", cfg.OAuthClientID)
 	}
+	if !reflect.DeepEqual(cfg.OAuthScopes, []string{"view_project", "view_issues"}) {
+		t.Errorf("saved oauth_scopes=%v want registered scopes", cfg.OAuthScopes)
+	}
 	if cfg.OAuthClientSecret != "" {
 		t.Errorf("returned client_secret must not be saved, got %q", cfg.OAuthClientSecret)
 	}
 	if cfg.Token == nil || cfg.Token.AccessToken != "AT" {
 		t.Errorf("token not saved: %+v", cfg.Token)
+	}
+}
+
+func TestAuthLogin_ConfiguredScopesAreKeptOnRegistration(t *testing.T) {
+	srv := newOAuthServer(t, false)
+	p := writeConfigFile(t, `url = "`+srv.URL+`"`+"\n"+`oauth_scopes = ["view_issues"]`+"\n")
+
+	out, err := runAuthLogin(t, p)
+	if err != nil {
+		t.Fatalf("auth login: %v\n%s", err, out)
+	}
+	if got := authorizeScope(t, out); got != "view_issues" {
+		t.Errorf("authorize URL scope=%q want view_issues", got)
+	}
+	cfg, err := config.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(cfg.OAuthScopes, []string{"view_issues"}) {
+		t.Errorf("oauth_scopes=%v want configured [view_issues]", cfg.OAuthScopes)
 	}
 }
 

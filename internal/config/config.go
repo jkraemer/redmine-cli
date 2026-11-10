@@ -89,7 +89,7 @@ func Load(path string) (*Config, error) {
 
 // LoadForLogin is like Load but accepts a configuration without any
 // credentials: `auth login` can obtain an OAuth client_id by dynamic
-// client registration and store it with SaveClientID.
+// client registration and store it with SaveRegistration.
 func LoadForLogin(path string) (*Config, error) {
 	return load(path, false)
 }
@@ -228,11 +228,12 @@ func (c *Config) SaveToken(tok *auth.Token) error {
 	return nil
 }
 
-// SaveClientID persists an OAuth client_id as oauth_client_id in the
-// config file at c.Path, preserving all other keys, with the same atomic
-// 0600 write as SaveToken. A set oauth_client_id selects OAuth over any
-// api_key (see AuthMethod). On success, c.OAuthClientID is updated.
-func (c *Config) SaveClientID(clientID string) error {
+// SaveRegistration persists a registered OAuth client as oauth_client_id
+// and, when scopes is non-empty, oauth_scopes in the config file at
+// c.Path, preserving all other keys, with the same atomic 0600 write as
+// SaveToken. A set oauth_client_id selects OAuth over any api_key (see
+// AuthMethod). On success, c.OAuthClientID (and c.OAuthScopes) are updated.
+func (c *Config) SaveRegistration(clientID string, scopes []string) error {
 	if c.Path == "" {
 		return errors.New("config has no path; cannot save oauth_client_id")
 	}
@@ -241,10 +242,16 @@ func (c *Config) SaveClientID(clientID string) error {
 		return err
 	}
 	raw["oauth_client_id"] = clientID
+	if len(scopes) > 0 {
+		raw["oauth_scopes"] = scopes
+	}
 	if err := writeRawConfig(c.Path, raw); err != nil {
 		return err
 	}
 	c.OAuthClientID = clientID
+	if len(scopes) > 0 {
+		c.OAuthScopes = scopes
+	}
 	return nil
 }
 

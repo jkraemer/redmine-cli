@@ -729,7 +729,7 @@ func TestLoadForLogin_StillRequiresURL(t *testing.T) {
 	}
 }
 
-func TestSaveClientID_PersistsAndSwitchesToOAuth(t *testing.T) {
+func TestSaveRegistration_PersistsAndSwitchesToOAuth(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "cfg.toml")
 	if err := os.WriteFile(p, []byte(`url = "https://x"
@@ -747,11 +747,14 @@ custom_key = "kept"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := cfg.SaveClientID("registered-id"); err != nil {
+	if err := cfg.SaveRegistration("registered-id", []string{"view_project", "view_issues"}); err != nil {
 		t.Fatal(err)
 	}
 	if cfg.OAuthClientID != "registered-id" {
 		t.Errorf("in-memory OAuthClientID=%q", cfg.OAuthClientID)
+	}
+	if !reflect.DeepEqual(cfg.OAuthScopes, []string{"view_project", "view_issues"}) {
+		t.Errorf("in-memory OAuthScopes=%v", cfg.OAuthScopes)
 	}
 
 	cfg2, err := Load(p)
@@ -763,6 +766,9 @@ custom_key = "kept"
 	}
 	if cfg2.AuthMethod() != "oauth" {
 		t.Errorf("AuthMethod=%q want oauth", cfg2.AuthMethod())
+	}
+	if !reflect.DeepEqual(cfg2.OAuthScopes, []string{"view_project", "view_issues"}) {
+		t.Errorf("OAuthScopes=%v not persisted", cfg2.OAuthScopes)
 	}
 	if cfg2.APIKey != "k" {
 		t.Errorf("api_key clobbered: %q", cfg2.APIKey)
@@ -777,10 +783,10 @@ custom_key = "kept"
 	}
 }
 
-func TestSaveClientID_CreatesFileIfMissing(t *testing.T) {
+func TestSaveRegistration_CreatesFileIfMissing(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "sub", "cfg.toml")
 	cfg := &Config{URL: "https://x", Path: p}
-	if err := cfg.SaveClientID("registered-id"); err != nil {
+	if err := cfg.SaveRegistration("registered-id", nil); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(p)
@@ -789,5 +795,8 @@ func TestSaveClientID_CreatesFileIfMissing(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `oauth_client_id = "registered-id"`) {
 		t.Errorf("file content:\n%s", raw)
+	}
+	if strings.Contains(string(raw), "oauth_scopes") {
+		t.Errorf("no scopes given, but oauth_scopes written:\n%s", raw)
 	}
 }

@@ -10,7 +10,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 - `auth login` registers an OAuth client by dynamic client registration
   (RFC 7591, discovered via RFC 8414 metadata) when no `oauth_client_id`
-  is configured, and saves it to the config file. A config with an
+  is configured, and saves it to the config file, along with the
+  registered scopes as `oauth_scopes` unless those are set. A config with an
   `api_key` switches to OAuth. Servers without registration support exit
   3 with a hint to register an application by hand
 

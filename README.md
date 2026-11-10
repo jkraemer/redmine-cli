@@ -77,10 +77,12 @@ If your Redmine supports OAuth dynamic client registration (RFC 7591,
 discovered via RFC 8414 server metadata at
 `/.well-known/oauth-authorization-server` — Planio and Redmines with the
 MCP server plugin do; stock Redmine does not), you can skip steps 1 and 2:
-with only `url` (and optionally `oauth_scopes`, see below) in your config,
-run `redmine-cli auth login`. It registers a public client named
-`redmine-cli`, saves the issued client ID as `oauth_client_id` in the
-config file, and continues with the login. A config that also has an
+with only `url` in your config, run `redmine-cli auth login`. It registers
+a public client named `redmine-cli`, saves the issued client ID as
+`oauth_client_id` in the config file, and continues with the login. Unless
+you already set `oauth_scopes` (see below), the scopes the server
+registered the client with are saved as `oauth_scopes` and requested on
+login; trim that list to give the CLI less. A config that also has an
 `api_key` switches to OAuth. To register a fresh client later, remove
 `oauth_client_id` and log in again.
 
