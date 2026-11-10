@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -26,12 +25,14 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 		Use:   "login",
 		Short: "Authenticate via OAuth 2.0 (prints URL, prompts for code)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cfg, err := config.Load(rc.configPath)
+			cfg, err := config.LoadForLogin(rc.configPath)
 			if err != nil {
 				return err
 			}
 			if cfg.OAuthClientID == "" {
-				return fmt.Errorf("oauth_client_id not configured — set it in config.toml or REDMINE_OAUTH_CLIENT_ID")
+				if err := registerClient(rc, cfg); err != nil {
+					return err
+				}
 			}
 			verifier, err := auth.GenerateVerifier()
 			if err != nil {
@@ -42,7 +43,7 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("building auth URL: %w", err)
 			}
-			code, err := auth.PromptCode(rc.out, os.Stdin, authURL)
+			code, err := auth.PromptCode(rc.out, cmd.InOrStdin(), authURL)
 			if err != nil {
 				return err
 			}
@@ -57,6 +58,24 @@ func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// registerClient obtains an OAuth client_id for cfg by dynamic client
+// registration and saves it to the config file, which switches the config
+// to OAuth even if it also holds an api_key.
+func registerClient(rc *runCtx, cfg *config.Config) error {
+	clientID, err := auth.RegisterClient(cfg.URL, "redmine-cli")
+	if err != nil {
+		return fmt.Errorf("oauth_client_id not configured and registering a client failed: %w — register an OAuth application in Redmine and set oauth_client_id (see README)", err)
+	}
+	if err := cfg.SaveClientID(clientID); err != nil {
+		return err
+	}
+	fmt.Fprintf(rc.out, "Registered OAuth client %s; saved as oauth_client_id in %s.\n", clientID, cfg.Path)
+	if cfg.APIKey != "" {
+		fmt.Fprintln(rc.out, "This config now uses OAuth; its api_key is no longer used.")
+	}
+	return nil
 }
 
 func newAuthLogoutCmd(rc *runCtx) *cobra.Command {

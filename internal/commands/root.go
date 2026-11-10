@@ -273,7 +273,7 @@ func exitCodeFor(err error) int {
 	}
 	if errors.Is(err, config.ErrMissingURL) || errors.Is(err, config.ErrMissingAPIKey) ||
 		errors.Is(err, config.ErrInvalidLocked) || errors.Is(err, config.ErrLockedNeedsAPIKey) ||
-		errors.Is(err, config.ErrConfigFile) {
+		errors.Is(err, config.ErrConfigFile) || errors.Is(err, auth.ErrRegistrationUnsupported) {
 		return 3
 	}
 	var apiErr *api.Error
