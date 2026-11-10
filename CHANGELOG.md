@@ -6,6 +6,12 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `issues list --filter name=expression` (repeatable) passes any Redmine
+  issue filter through in Redmine's short-filter syntax, e.g.
+  `--filter author_id=me --filter 'created_on=>=2026-11-03'`
+
 ## [0.5.0] - 2026-11-10
 
 ### Added

@@ -123,6 +123,7 @@ Notes:
 | List with extras | `redmine-cli issues list --project myproj --include attachments,relations` |
 | List saved queries | `redmine-cli queries list` |
 | Run a saved query | `redmine-cli issues list --query-id 42 --all` |
+| Any Redmine filter | `redmine-cli issues list --filter author_id=me --filter 'created_on=>=2026-11-03' --status '*'` |
 | Get full issue with journals | `redmine-cli issues get 1459 --include journals,attachments` |
 | Get issue with watchers | `redmine-cli issues get 1459 --include watchers` |
 | Get issue with checklist items | `redmine-cli issues get 1459 --include checklists` |
@@ -131,6 +132,7 @@ Notes:
 | Save attachment to a path | `redmine-cli attachments download 42 -o /tmp/foo.png` |
 
 Notes:
+- `--filter name=expression` (repeatable) passes a Redmine short filter through unchanged: any filter of the web UI's issue list by its internal name (`author_id`, `tracker_id`, `fixed_version_id`, `cf_5`, `updated_by`, ...). The expression starts with an optional operator (`>=`, `<=`, `><` range with `|`, `!` not, `!*` none, `*` any, `~` contains, `>t-7` within the last 7 days); `|` separates values; `me` works for users. Redmine silently ignores unknown filter names, so a typo returns unfiltered results. Filters combine with AND and are independent: `updated_by=me` means "has any journal by me, ever", not "updated by me" within an `updated_on` range. Names a dedicated flag sets (`status_id`, `project_id`, `assigned_to_id`, `updated_on`) can't be combined with that flag.
 - `issues get` returns every field the server sends, including fields added by plugins (in markdown under "Other fields"). Relations carry `issue_id` (source) and `issue_to_id` (target); the markdown view words them from the fetched issue's side ("blocked by #9").
 - `--include checklists` needs the redmine_checklists plugin. Each item has `subject` and `is_done`. A 404 (exit 2) on an issue that exists means the plugin is missing or you lack the "View checklists" permission. Section headers are indistinguishable from undone items.
 
