@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
 	"sort"
@@ -555,17 +556,25 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 }
 
 // hoursString formats an issue's own and total hours as "2.5 h" or
-// "2.5 h (total 4 h)" when the total (including subtasks) differs. It
-// returns "" when the hours are not set.
+// "2.5 h (total 4 h)" when the total (including subtasks) differs, rounded
+// to two decimals like Redmine's UI. It returns "" when the hours are not
+// set.
 func hoursString(own, total *float64) string {
 	if own == nil {
 		return ""
 	}
-	s := strconv.FormatFloat(*own, 'f', -1, 64) + " h"
-	if total != nil && *total != *own {
-		s += " (total " + strconv.FormatFloat(*total, 'f', -1, 64) + " h)"
+	s := formatHours(*own)
+	if total != nil {
+		if t := formatHours(*total); t != s {
+			s += " (total " + t + ")"
+		}
 	}
 	return s
+}
+
+// formatHours renders hours rounded to two decimals, without trailing zeros.
+func formatHours(h float64) string {
+	return strconv.FormatFloat(math.Round(h*100)/100, 'f', -1, 64) + " h"
 }
 
 // writeSubtasks writes an issue's children tree as a nested list.

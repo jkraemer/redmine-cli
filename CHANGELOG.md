@@ -6,6 +6,25 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `issues get` shows every field Redmine returns: parent, target version,
+  start date, done ratio, privacy, estimated/spent hours (with totals),
+  created/updated/closed dates, subtasks, relations, changesets, allowed
+  statuses, private journal notes. Fields added by plugins are passed
+  through in JSON and listed under "Other fields" in markdown
+- `--include` help lists `changesets` and `allowed_statuses`
+
+### Changed
+
+- Issue JSON follows Redmine's field order and always includes
+  `done_ratio` and `is_private`, also when 0/false
+
+### Fixed
+
+- `issues get --include relations,children` output now actually contains
+  the relations and subtasks
+
 ## [0.4.0] - 2026-11-10
 
 ### Added

@@ -1719,3 +1719,14 @@ func TestIssuesGet_JSON_IncludesPluginFields(t *testing.T) {
 		}
 	}
 }
+
+func TestHoursString_RoundsToTwoDecimals(t *testing.T) {
+	own, total := 0.036944444444444446, 1.006
+	if got := hoursString(&own, &total); got != "0.04 h (total 1.01 h)" {
+		t.Errorf("hoursString=%q want %q", got, "0.04 h (total 1.01 h)")
+	}
+	whole := 2.0
+	if got := hoursString(&whole, nil); got != "2 h" {
+		t.Errorf("hoursString=%q want %q", got, "2 h")
+	}
+}
