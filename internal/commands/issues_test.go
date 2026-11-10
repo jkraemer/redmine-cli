@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1728,5 +1729,103 @@ func TestHoursString_RoundsToTwoDecimals(t *testing.T) {
 	whole := 2.0
 	if got := hoursString(&whole, nil); got != "2 h" {
 		t.Errorf("hoursString=%q want %q", got, "2 h")
+	}
+}
+
+// runIssuesListQuery runs `issues list` with args against a fake server and
+// returns every query the server saw.
+func runIssuesListQuery(t *testing.T, args ...string) ([]url.Values, error) {
+	t.Helper()
+	var seen []url.Values
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		seen = append(seen, r.URL.Query())
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	})
+	defer stop()
+	rc := &runCtx{out: &bytes.Buffer{}, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs(append([]string{"issues", "list"}, args...))
+	err := root.Execute()
+	return seen, err
+}
+
+func TestIssuesList_FilterFlagsPassThrough(t *testing.T) {
+	seen, err := runIssuesListQuery(t, "--filter", "updated_by=me", "--filter", "updated_on=>=2026-11-03", "--status", "*", "--filter", "subject=~a,b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("requests=%d want 1", len(seen))
+	}
+	q := seen[0]
+	for name, want := range map[string]string{
+		"updated_by": "me",
+		"updated_on": ">=2026-11-03",
+		"status_id":  "*",
+		"subject":    "~a,b",
+	} {
+		if got := q.Get(name); got != want {
+			t.Errorf("%s=%q want %q (query %v)", name, got, want, q)
+		}
+	}
+}
+
+func TestIssuesList_FilterAppliesToEveryPageWithAll(t *testing.T) {
+	seen, err := runIssuesListQuery(t, "--all", "--filter", "updated_by=me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, q := range seen {
+		if q.Get("updated_by") != "me" {
+			t.Errorf("request %d missing filter: %v", i, q)
+		}
+	}
+}
+
+func TestIssuesList_FilterOnDedicatedParamWithoutItsFlagIsAllowed(t *testing.T) {
+	seen, err := runIssuesListQuery(t, "--filter", "status_id=!1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seen[0].Get("status_id"); got != "!1" {
+		t.Errorf("status_id=%q want !1", got)
+	}
+}
+
+func TestIssuesList_InvalidFiltersAreRejectedBeforeAnyRequest(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{"no equals sign", []string{"--filter", "updated_by"}, "name=expression"},
+		{"empty name", []string{"--filter", "=me"}, "name=expression"},
+		{"bracket name", []string{"--filter", "f[]=status_id"}, "invalid filter name"},
+		{"limit", []string{"--filter", "limit=5"}, "--limit"},
+		{"offset", []string{"--filter", "offset=5"}, "--offset"},
+		{"page", []string{"--filter", "page=2"}, "--offset"},
+		{"per_page", []string{"--filter", "per_page=2"}, "--limit"},
+		{"sort", []string{"--filter", "sort=id"}, "--sort"},
+		{"include", []string{"--filter", "include=relations"}, "--include"},
+		{"query_id", []string{"--filter", "query_id=3"}, "--query-id"},
+		{"key", []string{"--filter", "key=abc"}, "not a filter"},
+		{"status twice", []string{"--status", "open", "--filter", "status_id=*"}, "either --status or --filter status_id"},
+		{"project twice", []string{"--project", "p", "--filter", "project_id=q"}, "either --project or --filter project_id"},
+		{"assignee twice", []string{"--assignee", "me", "--filter", "assigned_to_id=2"}, "either --assignee or --filter assigned_to_id"},
+		{"updated-since twice", []string{"--updated-since", "2026-11-01", "--filter", "updated_on=>=2026-11-03"}, "either --updated-since or --filter updated_on"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			seen, err := runIssuesListQuery(t, tt.args...)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("err=%v want it to contain %q", err, tt.wantErr)
+			}
+			if exitCodeFor(err) != 1 {
+				t.Errorf("exit code=%d want 1", exitCodeFor(err))
+			}
+			if len(seen) != 0 {
+				t.Errorf("no request may be sent, got %d", len(seen))
+			}
+		})
 	}
 }

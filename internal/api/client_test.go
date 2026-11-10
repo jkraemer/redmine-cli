@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -1083,5 +1084,60 @@ func TestListChecklists_NotFoundWithoutPlugin(t *testing.T) {
 	var apiErr *Error
 	if err == nil || !errors.As(err, &apiErr) || apiErr.Status != 404 {
 		t.Fatalf("expected 404 *Error, got %v", err)
+	}
+}
+
+func TestListIssues_SendsFiltersAsShortFilterParams(t *testing.T) {
+	var seen url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.URL.Query()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k", srv.Client())
+	_, err := c.ListIssues(context.Background(), ListIssuesParams{
+		StatusID: "*",
+		Filters: []IssueFilter{
+			{Name: "updated_by", Expression: "me"},
+			{Name: "updated_on", Expression: ">=2026-11-03"},
+			{Name: "cf_5", Expression: "a|b"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{
+		"status_id":  "*",
+		"updated_by": "me",
+		"updated_on": ">=2026-11-03",
+		"cf_5":       "a|b",
+	} {
+		if got := seen.Get(name); got != want {
+			t.Errorf("%s=%q want %q (query %v)", name, got, want, seen)
+		}
+	}
+}
+
+func TestListIssues_LaterFilterWithSameNameWins(t *testing.T) {
+	var seen url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.URL.Query()
+		_, _ = w.Write([]byte(`{"issues":[],"total_count":0,"offset":0,"limit":25}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k", srv.Client())
+	_, err := c.ListIssues(context.Background(), ListIssuesParams{
+		Filters: []IssueFilter{
+			{Name: "author_id", Expression: "1"},
+			{Name: "author_id", Expression: "2"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seen["author_id"]; len(got) != 1 || got[0] != "2" {
+		t.Errorf("author_id=%v want [2]", got)
 	}
 }

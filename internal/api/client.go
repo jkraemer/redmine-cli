@@ -307,6 +307,9 @@ func (c *Client) ListIssues(ctx context.Context, p ListIssuesParams) (*ListIssue
 	if p.QueryID > 0 {
 		q.Set("query_id", strconv.Itoa(p.QueryID))
 	}
+	for _, f := range p.Filters {
+		q.Set(f.Name, f.Expression)
+	}
 	var res ListIssuesResult
 	if err := c.doJSON(ctx, "/issues.json", q, &res); err != nil {
 		return nil, err

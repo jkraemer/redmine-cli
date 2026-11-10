@@ -211,6 +211,19 @@ type ListIssuesParams struct {
 	Sort       string
 	Include    []string // attachments, relations
 	QueryID    int      // 0 means unset; emitted as ?query_id=N when > 0
+	// Filters are extra Redmine query filters, sent as short-filter
+	// parameters (name=expression). A later filter with the same name
+	// replaces an earlier one.
+	Filters []IssueFilter
+}
+
+// IssueFilter is one Redmine issue query filter in Redmine's short-filter
+// form: Name is the filter field (e.g. "updated_by", "cf_5"), Expression
+// is an optional operator followed by "|"-separated values, as parsed by
+// Redmine's Query#add_short_filter (e.g. "me", ">=2026-11-03", "!*").
+type IssueFilter struct {
+	Name       string
+	Expression string
 }
 
 // ListIssuesResult holds the listing payload.

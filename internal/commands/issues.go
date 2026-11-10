@@ -68,13 +68,18 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 		project, status, assignee, updatedSince, sort string
 		limit, offset, queryID                        int
 		all                                           bool
-		includes                                      []string
+		includes, filters                             []string
 	)
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List issues",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			issueFilters, err := parseIssueFilters(filters, cmd)
+			if err != nil {
+				return err
+			}
 			p := api.ListIssuesParams{
+				Filters:    issueFilters,
 				ProjectID:  project,
 				StatusID:   status,
 				AssignedTo: assignee,
@@ -111,7 +116,63 @@ func newIssuesListCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().BoolVar(&all, "all", false, "Fetch all pages (ignores --limit/--offset; capped at 1000 results)")
 	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: attachments, relations")
 	cmd.Flags().IntVar(&queryID, "query-id", 0, "Apply saved query ID; other filters are ignored by the server when set")
+	cmd.Flags().StringArrayVar(&filters, "filter", nil, "Redmine filter as name=expression, e.g. updated_by=me or 'updated_on=>=2026-11-03' (operators like >=, ><, !, !*, ~; '|' separates values); repeatable")
 	return cmd
+}
+
+// filterFlags maps the query parameters that issues list sets from its own
+// flags to those flags; --filter may only use such a name when the flag is
+// not given.
+var filterFlags = map[string]string{
+	"project_id":     "project",
+	"status_id":      "status",
+	"assigned_to_id": "assignee",
+	"updated_on":     "updated-since",
+}
+
+// nonFilterParams are query parameters of /issues.json that are not filters,
+// with the flag to use instead ("" when there is none).
+var nonFilterParams = map[string]string{
+	"include":  "include",
+	"limit":    "limit",
+	"per_page": "limit",
+	"offset":   "offset",
+	"page":     "offset",
+	"sort":     "sort",
+	"query_id": "query-id",
+	"key":      "",
+}
+
+// filterNamePattern matches Redmine filter field names such as updated_by,
+// cf_5 or assigned_to.cf_3. Brackets would switch Redmine to its f[]/op[]/v[]
+// form, which ignores all short filters.
+var filterNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.]+$`)
+
+// parseIssueFilters turns --filter name=expression values into issue
+// filters, rejecting names that are not filters or that a flag given on
+// cmd already sets.
+func parseIssueFilters(specs []string, cmd *cobra.Command) ([]api.IssueFilter, error) {
+	filters := make([]api.IssueFilter, 0, len(specs))
+	for _, spec := range specs {
+		name, expr, ok := strings.Cut(spec, "=")
+		if !ok || name == "" {
+			return nil, fmt.Errorf("invalid --filter %q: want name=expression", spec)
+		}
+		if !filterNamePattern.MatchString(name) {
+			return nil, fmt.Errorf("invalid filter name %q in --filter %q", name, spec)
+		}
+		if flag, ok := nonFilterParams[name]; ok {
+			if flag == "" {
+				return nil, fmt.Errorf("--filter %s: %s is not a filter", name, name)
+			}
+			return nil, fmt.Errorf("--filter %s: %s is not a filter, use --%s", name, name, flag)
+		}
+		if flag, ok := filterFlags[name]; ok && cmd.Flags().Changed(flag) {
+			return nil, fmt.Errorf("use either --%s or --filter %s, not both", flag, name)
+		}
+		filters = append(filters, api.IssueFilter{Name: name, Expression: expr})
+	}
+	return filters, nil
 }
 
 func newIssuesGetCmd(rc *runCtx) *cobra.Command {
