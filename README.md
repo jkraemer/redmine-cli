@@ -242,6 +242,7 @@ When `--config` is omitted, the default
     ./redmine-cli projects list
     ./redmine-cli --config ~/.config/redmine-cli/projA.toml projects list
     ./redmine-cli issues list --project myproj --status open --limit 10
+    ./redmine-cli issues list --filter author_id=me --filter 'created_on=>=2026-11-03' --status '*'
     ./redmine-cli issues get 1459
     ./redmine-cli issues create --project myproj --tracker 1 --subject "Bug" --attach screenshot.png --confirm
     ./redmine-cli issues update 1459 --attach patch.diff --notes "see attached" --confirm
