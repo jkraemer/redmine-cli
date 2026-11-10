@@ -1,6 +1,8 @@
 // Package api provides a thin typed Redmine HTTP client.
 package api
 
+import "encoding/json"
+
 // Project is a Redmine project (subset used by the CLI).
 type Project struct {
 	ID         int    `json:"id"`
@@ -60,29 +62,90 @@ type IDName struct {
 	Name string `json:"name"`
 }
 
-// Issue is a Redmine issue (subset used by the CLI).
+// Issue is a Redmine issue. It has typed fields for everything Redmine's
+// issue API returns (issues/show.api.rsb and the list API); keys added by
+// plugins are kept in Extra (see issue.go).
 type Issue struct {
-	ID          int     `json:"id"`
-	Subject     string  `json:"subject"`
-	Description string  `json:"description,omitempty"`
-	Project     IDName  `json:"project"`
-	Tracker     IDName  `json:"tracker"`
-	Status      IDName  `json:"status"`
-	Priority    IDName  `json:"priority"`
-	Author      IDName  `json:"author"`
-	AssignedTo  *IDName `json:"assigned_to,omitempty"`
-	Category    *IDName `json:"category,omitempty"`
-	StartDate   string  `json:"start_date,omitempty"`
-	DueDate     string  `json:"due_date,omitempty"`
-	DoneRatio   int     `json:"done_ratio,omitempty"`
-	CreatedOn   string  `json:"created_on,omitempty"`
-	UpdatedOn   string  `json:"updated_on,omitempty"`
+	ID           int         `json:"id"`
+	Project      IDName      `json:"project"`
+	Tracker      IDName      `json:"tracker"`
+	Status       IssueStatus `json:"status"`
+	Priority     IDName      `json:"priority"`
+	Author       IDName      `json:"author"`
+	AssignedTo   *IDName     `json:"assigned_to,omitempty"`
+	Category     *IDName     `json:"category,omitempty"`
+	FixedVersion *IDName     `json:"fixed_version,omitempty"`
+	Parent       *IssueRef   `json:"parent,omitempty"`
+	Subject      string      `json:"subject"`
+	Description  string      `json:"description,omitempty"`
+	StartDate    string      `json:"start_date,omitempty"`
+	DueDate      string      `json:"due_date,omitempty"`
+	DoneRatio    int         `json:"done_ratio"`
+	IsPrivate    bool        `json:"is_private"`
+	// Hours are pointers because Redmine sends null for "not set", which
+	// differs from 0.0.
+	EstimatedHours      *float64 `json:"estimated_hours,omitempty"`
+	TotalEstimatedHours *float64 `json:"total_estimated_hours,omitempty"`
+	SpentHours          *float64 `json:"spent_hours,omitempty"`
+	TotalSpentHours     *float64 `json:"total_spent_hours,omitempty"`
+	CreatedOn           string   `json:"created_on,omitempty"`
+	UpdatedOn           string   `json:"updated_on,omitempty"`
+	ClosedOn            string   `json:"closed_on,omitempty"`
 
-	Journals     []Journal          `json:"journals,omitempty"`
-	Attachments  []Attachment       `json:"attachments,omitempty"`
-	Watchers     []IDName           `json:"watchers,omitempty"`
-	CustomFields []CustomFieldValue `json:"custom_fields,omitempty"`
-	Checklists   []ChecklistItem    `json:"checklists,omitempty"`
+	CustomFields    []CustomFieldValue `json:"custom_fields,omitempty"`
+	Children        []IssueChild       `json:"children,omitempty"`
+	Attachments     []Attachment       `json:"attachments,omitempty"`
+	Relations       []IssueRelation    `json:"relations,omitempty"`
+	Changesets      []Changeset        `json:"changesets,omitempty"`
+	Journals        []Journal          `json:"journals,omitempty"`
+	Watchers        []IDName           `json:"watchers,omitempty"`
+	AllowedStatuses []IssueStatus      `json:"allowed_statuses,omitempty"`
+	Checklists      []ChecklistItem    `json:"checklists,omitempty"`
+
+	// Extra holds the top-level keys of the server's issue object that are
+	// not standard Redmine fields (typically added by plugins), as the
+	// server sent them.
+	Extra map[string]json.RawMessage `json:"-"`
+}
+
+// IssueStatus is an issue status reference. IsClosed is a pointer because
+// older Redmine versions do not send it.
+type IssueStatus struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	IsClosed *bool  `json:"is_closed,omitempty"`
+}
+
+// IssueRef references another issue by ID only (e.g. an issue's parent).
+type IssueRef struct {
+	ID int `json:"id"`
+}
+
+// IssueChild is one subtask in an issue's children tree.
+type IssueChild struct {
+	ID       int          `json:"id"`
+	Tracker  *IDName      `json:"tracker,omitempty"`
+	Subject  string       `json:"subject"`
+	Children []IssueChild `json:"children,omitempty"`
+}
+
+// IssueRelation is a relation between two issues. IssueID is the issue
+// the relation starts from, which is not necessarily the issue it was
+// fetched with. Delay is only set for precedes/follows.
+type IssueRelation struct {
+	ID           int    `json:"id"`
+	IssueID      int    `json:"issue_id"`
+	IssueToID    int    `json:"issue_to_id"`
+	RelationType string `json:"relation_type"`
+	Delay        *int   `json:"delay,omitempty"`
+}
+
+// Changeset is a repository commit linked to an issue.
+type Changeset struct {
+	Revision    string  `json:"revision"`
+	User        *IDName `json:"user,omitempty"`
+	Comments    string  `json:"comments,omitempty"`
+	CommittedOn string  `json:"committed_on,omitempty"`
 }
 
 // ChecklistItem is one entry of an issue's checklist, provided by the
@@ -99,11 +162,14 @@ type ChecklistItem struct {
 
 // Journal is one entry in an issue's history.
 type Journal struct {
-	ID        int    `json:"id"`
-	User      IDName `json:"user"`
-	Notes     string `json:"notes,omitempty"`
-	CreatedOn string `json:"created_on,omitempty"`
-	Details   []any  `json:"details,omitempty"`
+	ID           int     `json:"id"`
+	User         IDName  `json:"user"`
+	Notes        string  `json:"notes,omitempty"`
+	CreatedOn    string  `json:"created_on,omitempty"`
+	UpdatedOn    string  `json:"updated_on,omitempty"`
+	UpdatedBy    *IDName `json:"updated_by,omitempty"`
+	PrivateNotes bool    `json:"private_notes"`
+	Details      []any   `json:"details,omitempty"`
 }
 
 // Upload is the {id, token} result of POST /uploads.json.
@@ -123,14 +189,15 @@ type UploadRef struct {
 
 // Attachment metadata.
 type Attachment struct {
-	ID          int    `json:"id"`
-	Filename    string `json:"filename"`
-	Filesize    int64  `json:"filesize"`
-	ContentType string `json:"content_type,omitempty"`
-	ContentURL  string `json:"content_url"`
-	Description string `json:"description,omitempty"`
-	Author      IDName `json:"author"`
-	CreatedOn   string `json:"created_on"`
+	ID           int    `json:"id"`
+	Filename     string `json:"filename"`
+	Filesize     int64  `json:"filesize"`
+	ContentType  string `json:"content_type,omitempty"`
+	ContentURL   string `json:"content_url"`
+	Description  string `json:"description,omitempty"`
+	ThumbnailURL string `json:"thumbnail_url,omitempty"`
+	Author       IDName `json:"author"`
+	CreatedOn    string `json:"created_on"`
 }
 
 // ListIssuesParams holds query params for /issues.json.
@@ -169,9 +236,10 @@ type GetIssueParams struct {
 // payloads. Name is populated on reads (GET responses include it); writes
 // never set it, so omitempty keeps the write wire format unchanged.
 type CustomFieldValue struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name,omitempty"`
-	Value any    `json:"value"`
+	ID       int    `json:"id"`
+	Name     string `json:"name,omitempty"`
+	Multiple bool   `json:"multiple,omitempty"`
+	Value    any    `json:"value"`
 }
 
 // IssueCreate is the payload for POST /issues.json. The CLI wraps this in
