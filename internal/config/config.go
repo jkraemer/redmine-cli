@@ -77,11 +77,27 @@ var ErrConfigFile = errors.New("config file")
 // file. If path is empty, falls back to the default discovery path. If path
 // is non-empty and the file is missing, returns an error.
 func Load(path string) (*Config, error) {
+	cfg, err := load(path, false)
+	if err != nil {
+		return nil, err
+	}
+	if cfg.APIKey == "" && cfg.OAuthClientID == "" {
+		return nil, ErrMissingAPIKey
+	}
+	return cfg, nil
+}
+
+// LoadForLogin is like Load but accepts a configuration without any
+// credentials: `auth login` can obtain an OAuth client_id by dynamic
+// client registration and store it with SaveClientID.
+func LoadForLogin(path string) (*Config, error) {
 	return load(path, false)
 }
 
-// load is the shared implementation behind Load and LoadLocked. In locked
-// mode the credential, OAuth and read-only env vars are ignored so the
+// load is the shared implementation behind Load, LoadForLogin and
+// LoadLocked. It requires a URL; which credentials are required is up to
+// the caller. In locked mode the credential, OAuth and read-only env vars
+// are ignored so the
 // config file is the only source, parse errors never echo file content, and
 // the legacy token file is never read.
 func load(path string, locked bool) (*Config, error) {
@@ -154,9 +170,6 @@ func load(path string, locked bool) (*Config, error) {
 	if cfg.URL == "" {
 		return nil, ErrMissingURL
 	}
-	if !locked && cfg.APIKey == "" && cfg.OAuthClientID == "" {
-		return nil, ErrMissingAPIKey
-	}
 	return cfg, nil
 }
 
@@ -212,6 +225,26 @@ func (c *Config) SaveToken(tok *auth.Token) error {
 			_ = os.Remove(leg) // best-effort
 		}
 	}
+	return nil
+}
+
+// SaveClientID persists an OAuth client_id as oauth_client_id in the
+// config file at c.Path, preserving all other keys, with the same atomic
+// 0600 write as SaveToken. A set oauth_client_id selects OAuth over any
+// api_key (see AuthMethod). On success, c.OAuthClientID is updated.
+func (c *Config) SaveClientID(clientID string) error {
+	if c.Path == "" {
+		return errors.New("config has no path; cannot save oauth_client_id")
+	}
+	raw, err := readRawConfig(c.Path)
+	if err != nil {
+		return err
+	}
+	raw["oauth_client_id"] = clientID
+	if err := writeRawConfig(c.Path, raw); err != nil {
+		return err
+	}
+	c.OAuthClientID = clientID
 	return nil
 }
 

@@ -689,3 +689,105 @@ func TestSaveToken_KeepsLegacyAtCustomPath(t *testing.T) {
 		t.Errorf("legacy must be preserved for custom-config save: %v", err)
 	}
 }
+
+func TestLoad_MissingCredentials(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "https://x")
+	t.Setenv("REDMINE_API_KEY", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	_, err := Load("")
+	if !errors.Is(err, ErrMissingAPIKey) {
+		t.Fatalf("err=%v want ErrMissingAPIKey", err)
+	}
+}
+
+func TestLoadForLogin_AllowsMissingCredentials(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "https://x")
+	t.Setenv("REDMINE_API_KEY", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	cfg, err := LoadForLogin("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.URL != "https://x" || cfg.OAuthClientID != "" {
+		t.Errorf("cfg=%+v", cfg)
+	}
+}
+
+func TestLoadForLogin_StillRequiresURL(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	_, err := LoadForLogin("")
+	if !errors.Is(err, ErrMissingURL) {
+		t.Fatalf("err=%v want ErrMissingURL", err)
+	}
+}
+
+func TestSaveClientID_PersistsAndSwitchesToOAuth(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "cfg.toml")
+	if err := os.WriteFile(p, []byte(`url = "https://x"
+api_key = "k"
+custom_key = "kept"
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("REDMINE_URL", "")
+	t.Setenv("REDMINE_API_KEY", "")
+	t.Setenv("REDMINE_OAUTH_CLIENT_ID", "")
+
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.SaveClientID("registered-id"); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.OAuthClientID != "registered-id" {
+		t.Errorf("in-memory OAuthClientID=%q", cfg.OAuthClientID)
+	}
+
+	cfg2, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg2.OAuthClientID != "registered-id" {
+		t.Errorf("OAuthClientID=%q not persisted", cfg2.OAuthClientID)
+	}
+	if cfg2.AuthMethod() != "oauth" {
+		t.Errorf("AuthMethod=%q want oauth", cfg2.AuthMethod())
+	}
+	if cfg2.APIKey != "k" {
+		t.Errorf("api_key clobbered: %q", cfg2.APIKey)
+	}
+	raw, _ := os.ReadFile(p)
+	if !strings.Contains(string(raw), "custom_key") {
+		t.Errorf("unknown key dropped:\n%s", raw)
+	}
+	info, _ := os.Stat(p)
+	if info.Mode().Perm() != 0o600 {
+		t.Errorf("file mode %#o, want 0600", info.Mode().Perm())
+	}
+}
+
+func TestSaveClientID_CreatesFileIfMissing(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "sub", "cfg.toml")
+	cfg := &Config{URL: "https://x", Path: p}
+	if err := cfg.SaveClientID("registered-id"); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `oauth_client_id = "registered-id"`) {
+		t.Errorf("file content:\n%s", raw)
+	}
+}
