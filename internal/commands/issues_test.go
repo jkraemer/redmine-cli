@@ -1530,3 +1530,192 @@ func TestIssuesGet_IncludeChecklists_PluginMissingIsNotFound(t *testing.T) {
 		t.Errorf("no issue output expected on failure:\n%s", out.String())
 	}
 }
+
+// richIssueJSON carries every standard field rendered in markdown plus
+// keys added by plugins.
+const richIssueJSON = `{"issue":{
+  "id":7,"subject":"Subj","description":"Body",
+  "project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},
+  "status":{"id":1,"name":"New","is_closed":false},"priority":{"id":1,"name":"Normal"},
+  "author":{"id":1,"name":"A"},
+  "fixed_version":{"id":8,"name":"1.0"},"parent":{"id":3},
+  "start_date":"2026-01-01","due_date":"2026-02-01","done_ratio":30,"is_private":true,
+  "estimated_hours":2.5,"total_estimated_hours":4.0,"spent_hours":0.0,"total_spent_hours":1.5,
+  "created_on":"2026-01-01T10:00:00Z","updated_on":"2026-01-02T10:00:00Z","closed_on":"2026-01-03T10:00:00Z",
+  "children":[{"id":10,"tracker":{"id":1,"name":"Bug"},"subject":"Child",
+    "children":[{"id":11,"tracker":{"id":2,"name":"Task"},"subject":"Grandchild"}]}],
+  "relations":[
+    {"id":1,"issue_id":7,"issue_to_id":8,"relation_type":"precedes","delay":2},
+    {"id":2,"issue_id":9,"issue_to_id":7,"relation_type":"blocks","delay":null},
+    {"id":3,"issue_id":12,"issue_to_id":7,"relation_type":"relates","delay":null}],
+  "changesets":[{"revision":"abc123","user":{"id":1,"name":"A"},"comments":"fix it","committed_on":"2026-01-01T10:00:00Z"}],
+  "journals":[{"id":1,"user":{"id":1,"name":"A"},"notes":"secret","created_on":"t1","private_notes":true}],
+  "allowed_statuses":[{"id":1,"name":"New","is_closed":false},{"id":5,"name":"Closed","is_closed":true}],
+  "customer_company":{"id":9,"name":"ACME"},
+  "planio_score":42,
+  "planio_tags":["x","y"],
+  "planio_blob":{"a":[1,2]},
+  "planio_empty":null,
+  "planio_evil":"ok\u001b]52;c;PAYLOAD\u0007"
+}}`
+
+func runIssuesGetMarkdown(t *testing.T, body string) string {
+	t.Helper()
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(body))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	return out.String()
+}
+
+func TestIssuesGet_Markdown_ShowsStandardFields(t *testing.T) {
+	got := runIssuesGetMarkdown(t, richIssueJSON)
+	for _, want := range []string{
+		"- **Parent:** #3\n",
+		"- **Target version:** 1.0\n",
+		"- **Start:** 2026-01-01\n",
+		"- **Due:** 2026-02-01\n",
+		"- **Done:** 30%\n",
+		"- **Estimated time:** 2.5 h (total 4 h)\n",
+		"- **Spent time:** 0 h (total 1.5 h)\n",
+		"- **Private:** yes\n",
+		"- **Created:** 2026-01-01T10:00:00Z\n",
+		"- **Updated:** 2026-01-02T10:00:00Z\n",
+		"- **Closed:** 2026-01-03T10:00:00Z\n",
+		"- **Allowed statuses:** New, Closed\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %q in:\n%s", want, got)
+		}
+	}
+}
+
+func TestIssuesGet_Markdown_OmitsUnsetStandardFields(t *testing.T) {
+	got := runIssuesGetMarkdown(t, `{"issue":{"id":7,"subject":"S","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"},"done_ratio":0,"is_private":false,"estimated_hours":null}}`)
+	for _, unwanted := range []string{"Parent", "Target version", "Estimated time", "Spent time", "Private", "Closed", "## Subtasks", "## Relations", "## Changesets", "Allowed statuses", "## Other fields"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("unexpected %q in:\n%s", unwanted, got)
+		}
+	}
+	if !strings.Contains(got, "- **Done:** 0%\n") {
+		t.Errorf("done ratio 0 must still be shown:\n%s", got)
+	}
+}
+
+func TestIssuesGet_Markdown_SameTotalHoursAreNotRepeated(t *testing.T) {
+	got := runIssuesGetMarkdown(t, `{"issue":{"id":7,"subject":"S","project":{"id":1,"name":"P"},"tracker":{"id":1,"name":"Bug"},"status":{"id":1,"name":"New"},"priority":{"id":1,"name":"Normal"},"author":{"id":1,"name":"A"},"estimated_hours":2.0,"total_estimated_hours":2.0}}`)
+	if !strings.Contains(got, "- **Estimated time:** 2 h\n") {
+		t.Errorf("want plain estimated time without total:\n%s", got)
+	}
+}
+
+func TestIssuesGet_Markdown_ShowsSubtaskTree(t *testing.T) {
+	got := runIssuesGetMarkdown(t, richIssueJSON)
+	if !strings.Contains(got, "\n## Subtasks\n\n- #10 Bug: Child\n  - #11 Task: Grandchild\n") {
+		t.Errorf("subtask tree missing or malformed:\n%s", got)
+	}
+}
+
+// Relations are worded from the viewed issue's side: a relation stored
+// as "9 blocks 7" shows as "blocked by #9" on issue 7.
+func TestIssuesGet_Markdown_ShowsRelationsFromThisIssuesSide(t *testing.T) {
+	got := runIssuesGetMarkdown(t, richIssueJSON)
+	if !strings.Contains(got, "\n## Relations\n\n- precedes #8 (delay: 2 days)\n- blocked by #9\n- related to #12\n") {
+		t.Errorf("relations missing or malformed:\n%s", got)
+	}
+}
+
+func TestRelationLabel(t *testing.T) {
+	tests := []struct {
+		typ     string
+		forward bool
+		want    string
+	}{
+		{"relates", true, "related to"},
+		{"relates", false, "related to"},
+		{"duplicates", true, "duplicates"},
+		{"duplicates", false, "duplicated by"},
+		{"blocks", true, "blocks"},
+		{"blocks", false, "blocked by"},
+		{"precedes", true, "precedes"},
+		{"precedes", false, "follows"},
+		{"copied_to", true, "copied to"},
+		{"copied_to", false, "copied from"},
+		{"plugin_type", true, "plugin_type"},
+		{"plugin_type", false, "plugin_type (inverse)"},
+	}
+	for _, tt := range tests {
+		if got := relationLabel(tt.typ, tt.forward); got != tt.want {
+			t.Errorf("relationLabel(%q, %v)=%q want %q", tt.typ, tt.forward, got, tt.want)
+		}
+	}
+}
+
+func TestIssuesGet_Markdown_ShowsChangesets(t *testing.T) {
+	got := runIssuesGetMarkdown(t, richIssueJSON)
+	if !strings.Contains(got, "\n## Changesets\n\n- abc123 by A (2026-01-01T10:00:00Z): fix it\n") {
+		t.Errorf("changesets missing or malformed:\n%s", got)
+	}
+}
+
+func TestIssuesGet_Markdown_MarksPrivateNotes(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(richIssueJSON))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "markdown"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7", "--include", "journals"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "**A** (t1, private):\nsecret") {
+		t.Errorf("private note not marked:\n%s", out.String())
+	}
+}
+
+func TestIssuesGet_Markdown_ShowsPluginFields(t *testing.T) {
+	got := runIssuesGetMarkdown(t, richIssueJSON)
+	if !strings.Contains(got, "\n## Other fields\n\n- **Customer company:** ACME\n- **Planio blob:** {\"a\":[1,2]}\n- **Planio evil:** ok]52;c;PAYLOAD\n- **Planio score:** 42\n- **Planio tags:** x, y\n") {
+		t.Errorf("plugin fields missing or malformed:\n%s", got)
+	}
+	if strings.Contains(got, "Planio empty") {
+		t.Errorf("null plugin field must be skipped:\n%s", got)
+	}
+	if strings.ContainsAny(got, "\x1b\x07") {
+		t.Errorf("plugin field reached the terminal unsanitized:\n%q", got)
+	}
+}
+
+func TestIssuesGet_JSON_IncludesPluginFields(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(richIssueJSON))
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "get", "7"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Issue map[string]any `json:"issue"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out.String())
+	}
+	for _, k := range []string{"customer_company", "planio_score", "planio_tags", "relations", "children", "fixed_version", "spent_hours"} {
+		if _, ok := got.Issue[k]; !ok {
+			t.Errorf("JSON output missing %q:\n%s", k, out.String())
+		}
+	}
+}

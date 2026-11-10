@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -136,7 +139,7 @@ func newIssuesGetCmd(rc *runCtx) *cobra.Command {
 			return renderIssueDetail(rc, issue)
 		},
 	}
-	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, watchers, checklists (requires the redmine_checklists plugin)")
+	cmd.Flags().StringSliceVar(&includes, "include", nil, "Include extras: journals, attachments, relations, children, changesets, watchers, allowed_statuses, checklists (requires the redmine_checklists plugin)")
 	return cmd
 }
 
@@ -426,15 +429,69 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 		if is.AssignedTo != nil {
 			fmt.Fprintf(&b, "- **Assigned to:** %s\n", clean(is.AssignedTo.Name))
 		}
+		if is.Parent != nil {
+			fmt.Fprintf(&b, "- **Parent:** #%d\n", is.Parent.ID)
+		}
+		if is.FixedVersion != nil {
+			fmt.Fprintf(&b, "- **Target version:** %s\n", clean(is.FixedVersion.Name))
+		}
+		if is.StartDate != "" {
+			fmt.Fprintf(&b, "- **Start:** %s\n", clean(is.StartDate))
+		}
 		if is.DueDate != "" {
 			fmt.Fprintf(&b, "- **Due:** %s\n", clean(is.DueDate))
+		}
+		fmt.Fprintf(&b, "- **Done:** %d%%\n", is.DoneRatio)
+		if h := hoursString(is.EstimatedHours, is.TotalEstimatedHours); h != "" {
+			fmt.Fprintf(&b, "- **Estimated time:** %s\n", h)
+		}
+		if h := hoursString(is.SpentHours, is.TotalSpentHours); h != "" {
+			fmt.Fprintf(&b, "- **Spent time:** %s\n", h)
+		}
+		if is.IsPrivate {
+			fmt.Fprintf(&b, "- **Private:** yes\n")
+		}
+		if is.CreatedOn != "" {
+			fmt.Fprintf(&b, "- **Created:** %s\n", clean(is.CreatedOn))
+		}
+		if is.UpdatedOn != "" {
+			fmt.Fprintf(&b, "- **Updated:** %s\n", clean(is.UpdatedOn))
+		}
+		if is.ClosedOn != "" {
+			fmt.Fprintf(&b, "- **Closed:** %s\n", clean(is.ClosedOn))
 		}
 		for _, cf := range is.CustomFields {
 			if val := customFieldValueString(cf.Value); val != "" {
 				fmt.Fprintf(&b, "- **%s:** %s\n", clean(cf.Name), clean(val))
 			}
 		}
+		if len(is.AllowedStatuses) > 0 {
+			names := make([]string, len(is.AllowedStatuses))
+			for i, st := range is.AllowedStatuses {
+				names[i] = clean(st.Name)
+			}
+			fmt.Fprintf(&b, "- **Allowed statuses:** %s\n", strings.Join(names, ", "))
+		}
 		fmt.Fprintf(&b, "\n%s\n", clean(is.Description))
+		if len(is.Children) > 0 {
+			fmt.Fprintf(&b, "\n## Subtasks\n\n")
+			writeSubtasks(&b, is.Children, "")
+		}
+		if len(is.Relations) > 0 {
+			fmt.Fprintf(&b, "\n## Relations\n\n")
+			for _, r := range is.Relations {
+				forward := r.IssueID == is.ID
+				other := r.IssueToID
+				if !forward {
+					other = r.IssueID
+				}
+				fmt.Fprintf(&b, "- %s #%d", clean(relationLabel(r.RelationType, forward)), other)
+				if r.Delay != nil {
+					fmt.Fprintf(&b, " (delay: %d days)", *r.Delay)
+				}
+				b.WriteString("\n")
+			}
+		}
 		if len(is.Checklists) > 0 {
 			fmt.Fprintf(&b, "\n## Checklist\n\n")
 			for _, item := range is.Checklists {
@@ -451,7 +508,27 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 				if j.Notes == "" {
 					continue
 				}
-				fmt.Fprintf(&b, "**%s** (%s):\n%s\n\n", clean(j.User.Name), clean(j.CreatedOn), clean(j.Notes))
+				private := ""
+				if j.PrivateNotes {
+					private = ", private"
+				}
+				fmt.Fprintf(&b, "**%s** (%s%s):\n%s\n\n", clean(j.User.Name), clean(j.CreatedOn), private, clean(j.Notes))
+			}
+		}
+		if len(is.Changesets) > 0 {
+			fmt.Fprintf(&b, "\n## Changesets\n\n")
+			for _, cs := range is.Changesets {
+				fmt.Fprintf(&b, "- %s", clean(cs.Revision))
+				if cs.User != nil {
+					fmt.Fprintf(&b, " by %s", clean(cs.User.Name))
+				}
+				if cs.CommittedOn != "" {
+					fmt.Fprintf(&b, " (%s)", clean(cs.CommittedOn))
+				}
+				if cs.Comments != "" {
+					fmt.Fprintf(&b, ": %s", clean(cs.Comments))
+				}
+				b.WriteString("\n")
 			}
 		}
 		if len(is.Attachments) > 0 {
@@ -470,8 +547,146 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 				fmt.Fprintf(&b, "- %s\n", clean(w.Name))
 			}
 		}
+		writeExtraFields(&b, is.Extra)
 		_, err := fmt.Fprint(rc.out, b.String())
 		return err
 	}
 	return output.JSON(rc.out, map[string]any{"issue": is})
+}
+
+// hoursString formats an issue's own and total hours as "2.5 h" or
+// "2.5 h (total 4 h)" when the total (including subtasks) differs. It
+// returns "" when the hours are not set.
+func hoursString(own, total *float64) string {
+	if own == nil {
+		return ""
+	}
+	s := strconv.FormatFloat(*own, 'f', -1, 64) + " h"
+	if total != nil && *total != *own {
+		s += " (total " + strconv.FormatFloat(*total, 'f', -1, 64) + " h)"
+	}
+	return s
+}
+
+// writeSubtasks writes an issue's children tree as a nested list.
+func writeSubtasks(b *strings.Builder, children []api.IssueChild, indent string) {
+	clean := output.SanitizeForTerminal
+	for _, c := range children {
+		fmt.Fprintf(b, "%s- #%d ", indent, c.ID)
+		if c.Tracker != nil {
+			fmt.Fprintf(b, "%s: ", clean(c.Tracker.Name))
+		}
+		fmt.Fprintf(b, "%s\n", clean(c.Subject))
+		writeSubtasks(b, c.Children, indent+"  ")
+	}
+}
+
+// relationLabels maps a Redmine relation type to its wording from the
+// relation's source issue (forward) and from its target issue (inverse).
+var relationLabels = map[string][2]string{
+	"relates":    {"related to", "related to"},
+	"duplicates": {"duplicates", "duplicated by"},
+	"blocks":     {"blocks", "blocked by"},
+	"precedes":   {"precedes", "follows"},
+	"copied_to":  {"copied to", "copied from"},
+}
+
+// relationLabel words a relation from the viewed issue's side: forward
+// when the viewed issue is the relation's source (issue_id).
+func relationLabel(relationType string, forward bool) string {
+	labels, ok := relationLabels[relationType]
+	switch {
+	case ok && forward:
+		return labels[0]
+	case ok:
+		return labels[1]
+	case forward:
+		return relationType
+	default:
+		return relationType + " (inverse)"
+	}
+}
+
+// writeExtraFields renders the non-standard issue keys (see api.Issue.Extra)
+// as an "Other fields" list, sorted by key. Null and empty values are
+// skipped.
+func writeExtraFields(b *strings.Builder, extra map[string]json.RawMessage) {
+	keys := make([]string, 0, len(extra))
+	for k := range extra {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var lines []string
+	for _, k := range keys {
+		if val := extraValueString(extra[k]); val != "" {
+			lines = append(lines, fmt.Sprintf("- **%s:** %s\n", output.SanitizeForTerminal(humanizeKey(k)), output.SanitizeForTerminal(val)))
+		}
+	}
+	if len(lines) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n## Other fields\n\n%s", strings.Join(lines, ""))
+}
+
+// humanizeKey turns a JSON key like "customer_company" into "Customer company".
+func humanizeKey(k string) string {
+	s := strings.ReplaceAll(k, "_", " ")
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// extraValueString renders a raw JSON value for markdown: scalars as-is, an
+// object with a "name" by its name, a list of those comma-separated, and
+// anything else as compact JSON.
+func extraValueString(raw json.RawMessage) string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return string(raw)
+	}
+	if s, ok := simpleValueString(v); ok {
+		return s
+	}
+	if list, ok := v.([]any); ok {
+		parts := make([]string, 0, len(list))
+		for _, e := range list {
+			s, ok := simpleValueString(e)
+			if !ok {
+				parts = nil
+				break
+			}
+			parts = append(parts, s)
+		}
+		if parts != nil {
+			return strings.Join(parts, ", ")
+		}
+	}
+	var compact bytes.Buffer
+	if err := json.Compact(&compact, raw); err != nil {
+		return string(raw)
+	}
+	return compact.String()
+}
+
+// simpleValueString renders a scalar, or an object carrying a string
+// "name", as text. It reports false for any other value.
+func simpleValueString(v any) (string, bool) {
+	switch x := v.(type) {
+	case nil:
+		return "", true
+	case string:
+		return x, true
+	case json.Number:
+		return x.String(), true
+	case bool:
+		return strconv.FormatBool(x), true
+	case map[string]any:
+		if name, ok := x["name"].(string); ok {
+			return name, true
+		}
+	}
+	return "", false
 }
