@@ -23,7 +23,7 @@ func newAuthCmd(rc *runCtx) *cobra.Command {
 func newAuthLoginCmd(rc *runCtx) *cobra.Command {
 	return &cobra.Command{
 		Use:   "login",
-		Short: "Authenticate via OAuth 2.0 (prints URL, prompts for code)",
+		Short: "Authenticate via OAuth 2.0 (registers a client if none is configured, prints URL, prompts for code)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.LoadForLogin(rc.configPath)
 			if err != nil {
