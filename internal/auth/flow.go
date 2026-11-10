@@ -31,7 +31,7 @@ func AuthorizeURL(baseURL, clientID, verifier string, pkce bool, scopes []string
 	if err != nil {
 		return "", err
 	}
-	u.Path = "/oauth/authorize"
+	u.Path = strings.TrimRight(u.Path, "/") + "/oauth/authorize"
 	q := u.Query()
 	q.Set("response_type", "code")
 	q.Set("client_id", clientID)

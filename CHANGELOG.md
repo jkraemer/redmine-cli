@@ -16,6 +16,8 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `auth login` keeps the path of a Redmine installed under a sub-path
+  (e.g. `https://host/redmine`) in the authorization URL
 - README: `oauth_client_secret` placeholder no longer reads like a client ID
 - A missing or unreadable config file exits 3 (config error) instead of 6
   (network error); an invalid config file exits 3 instead of 1. Local file

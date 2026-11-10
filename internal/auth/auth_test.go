@@ -305,3 +305,20 @@ func TestTokenExpired(t *testing.T) {
 		t.Error("zero ExpiresAt should not be expired")
 	}
 }
+
+func TestAuthorizeURL_KeepsSubPath(t *testing.T) {
+	verifier, _ := GenerateVerifier()
+	for _, base := range []string{"https://host.example/redmine", "https://host.example/redmine/"} {
+		got, err := AuthorizeURL(base, "cid", verifier, true, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		u, err := url.Parse(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.Path != "/redmine/oauth/authorize" {
+			t.Errorf("base %q: path=%q want /redmine/oauth/authorize", base, u.Path)
+		}
+	}
+}
