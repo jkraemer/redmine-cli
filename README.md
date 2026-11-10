@@ -71,6 +71,23 @@ use its API key. To restrict the CLI to reads regardless of auth method, see
 
 ### Option 2: OAuth 2.0 (headless / agent use)
 
+#### Automatic client registration
+
+If your Redmine supports OAuth dynamic client registration (RFC 7591,
+discovered via RFC 8414 server metadata at
+`/.well-known/oauth-authorization-server` — Planio and Redmines with the
+MCP server plugin do; stock Redmine does not), you can skip steps 1 and 2:
+with only `url` (and optionally `oauth_scopes`, see below) in your config,
+run `redmine-cli auth login`. It registers a public client named
+`redmine-cli`, saves the issued client ID as `oauth_client_id` in the
+config file, and continues with the login. A config that also has an
+`api_key` switches to OAuth. To register a fresh client later, remove
+`oauth_client_id` and log in again.
+
+On Planio, a client registered this way is treated as an MCP client: its
+tokens stop working while the MCP server is disabled, and are limited to
+read permissions while it is in read-only mode.
+
 #### 1. Register an OAuth application in Redmine
 
 Go to **Administration → Applications** and create a new application:

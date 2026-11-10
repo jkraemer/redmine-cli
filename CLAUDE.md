@@ -62,7 +62,11 @@ else lives under `internal/`:
 - `internal/auth/` — OAuth 2.0 authorization-code + PKCE with the OOB
   redirect URI (`urn:ietf:wg:oauth:2.0:oob`). Confidential clients (with
   `oauth_client_secret`) skip PKCE. Refresh preserves the previously
-  granted scope. The `auth.Token` struct and its `Expired()` helper live
+  granted scope. `RegisterClient` (`register.go`) does RFC 8414 discovery
+  + RFC 7591 registration as a public client; `auth login` calls it when
+  no `oauth_client_id` is set (config via `config.LoadForLogin`, which
+  skips the credentials check) and persists the id with
+  `cfg.SaveClientID`. The `auth.Token` struct and its `Expired()` helper live
   in `token.go`; token persistence is in `internal/config` (see above).
 - `internal/output/` — JSON (2-space, no HTML escaping) and Markdown
   table rendering. Format chosen by `--format` flag, then config

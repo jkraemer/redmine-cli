@@ -249,7 +249,10 @@ client needs — without them Redmine grants only its minimal default set:
 Or via env: `REDMINE_OAUTH_CLIENT_ID`, `REDMINE_OAUTH_CLIENT_SECRET`,
 `REDMINE_OAUTH_SCOPES` (space-separated).
 
-Then run `redmine-cli auth login`. `auth status` shows the granted scope
+Then run `redmine-cli auth login`. If no `oauth_client_id` is set and the
+server supports dynamic client registration (Planio does, stock Redmine
+does not), login registers a client and saves its `oauth_client_id`
+first. `auth status` shows the granted scope
 and is preserved across token refreshes. The OAuth token is stored in
 the same TOML file under a `[token]` section. See README for a list
 of common scopes and the admin workaround for older Redmines.
