@@ -86,7 +86,7 @@ Copy the **Client ID** and **Client Secret** that are shown after saving.
 #### 2. Add the client credentials to your config
 
     oauth_client_id = "your-client-id-here"
-    oauth_client_secret = "your-client-id-here"
+    oauth_client_secret = "your-client-secret-here"
 
 Client ID and secret can also be set via the environment:
 
