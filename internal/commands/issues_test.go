@@ -1829,3 +1829,73 @@ func TestIssuesList_InvalidFiltersAreRejectedBeforeAnyRequest(t *testing.T) {
 		})
 	}
 }
+
+func TestIssuesUpdate_Parent_SetAndClear(t *testing.T) {
+	for _, tc := range []struct {
+		flagVal string
+		want    any
+	}{
+		{"12", "12"},
+		{"", ""},
+	} {
+		c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("server should not be called in dry-run mode")
+		})
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+		root := buildRootForTest(rc)
+		root.SetArgs([]string{"issues", "update", "42", "--parent", tc.flagVal})
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		stop()
+		var got map[string]any
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		body, _ := got["body"].(map[string]any)
+		issue, _ := body["issue"].(map[string]any)
+		v, present := issue["parent_issue_id"]
+		if !present || v != tc.want {
+			t.Errorf("--parent %q: parent_issue_id=%v present=%v", tc.flagVal, v, present)
+		}
+	}
+}
+
+func TestIssuesUpdate_NoParentFlag_OmitsField(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no server call expected")
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "42", "--subject", "s"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(out.Bytes(), &got)
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	if _, present := issue["parent_issue_id"]; present {
+		t.Errorf("parent_issue_id must be omitted when flag not set: %v", issue)
+	}
+}
+
+func TestIssuesUpdate_Parent_RejectsNonIssueID(t *testing.T) {
+	for _, val := range []string{"abc", "#12", "0", "-3"} {
+		c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("server should not be called for validation errors")
+		})
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+		root := buildRootForTest(rc)
+		root.SetArgs([]string{"issues", "update", "42", "--parent", val})
+		err := root.Execute()
+		stop()
+		if err == nil || !strings.Contains(err.Error(), "--parent must be an issue ID") {
+			t.Errorf("--parent %q: err=%v", val, err)
+		}
+	}
+}

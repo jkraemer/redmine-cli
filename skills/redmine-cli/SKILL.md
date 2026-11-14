@@ -181,6 +181,8 @@ Scopes: `--scope all|my_projects|subprojects` (default = `all`).
 | Issue with watchers | append `--watcher 3 --watcher 8` |
 | Set category on update | `redmine-cli issues update 42 --category 7 --confirm` |
 | Clear category | `redmine-cli issues update 42 --category "" --confirm` |
+| Set parent on update | `redmine-cli issues update 42 --parent 17 --confirm` |
+| Remove parent | `redmine-cli issues update 42 --parent "" --confirm` |
 | Preview add watcher | `redmine-cli issues watchers add 42 7` |
 | Add watcher | append `--confirm` |
 | Preview remove watcher | `redmine-cli issues watchers remove 42 7` |

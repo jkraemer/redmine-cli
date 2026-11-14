@@ -394,6 +394,33 @@ func TestIssueLifecycle(t *testing.T) {
 	}
 }
 
+func TestIssueParent(t *testing.T) {
+	parentID := createIssue(t, uniqueSubject("parent"))
+	childID := createIssue(t, uniqueSubject("child"))
+	childIDStr := fmt.Sprintf("%d", childID)
+
+	runJSON(t, "issues", "update", childIDStr, "--parent", fmt.Sprintf("%d", parentID), "--confirm")
+	afterSet := runJSON(t, "issues", "get", childIDStr)
+	issue, ok := afterSet["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("get after setting parent: no issue in %v", afterSet)
+	}
+	parent, _ := issue["parent"].(map[string]any)
+	if idF, _ := parent["id"].(float64); int(idF) != parentID {
+		t.Errorf("parent=%v, want id %d", issue["parent"], parentID)
+	}
+
+	runJSON(t, "issues", "update", childIDStr, "--parent", "", "--confirm")
+	afterClear := runJSON(t, "issues", "get", childIDStr)
+	issue, ok = afterClear["issue"].(map[string]any)
+	if !ok {
+		t.Fatalf("get after removing parent: no issue in %v", afterClear)
+	}
+	if _, present := issue["parent"]; present {
+		t.Errorf("parent still present after removing: %v", issue["parent"])
+	}
+}
+
 func TestWatchers(t *testing.T) {
 	issueID := createIssue(t, uniqueSubject("watchers"))
 	issueIDStr := fmt.Sprintf("%d", issueID)

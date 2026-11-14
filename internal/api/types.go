@@ -280,18 +280,19 @@ type IssueCreate struct {
 // distinguish "not set" (omit from JSON) from "explicitly empty" (send
 // "" to clear the field). Redmine treats missing fields as unchanged.
 type IssueUpdate struct {
-	Subject      *string            `json:"subject,omitempty"`
-	Description  *string            `json:"description,omitempty"`
-	StatusID     *int               `json:"status_id,omitempty"`
-	PriorityID   *int               `json:"priority_id,omitempty"`
-	AssignedToID *string            `json:"assigned_to_id,omitempty"`
-	CategoryID   *string            `json:"category_id,omitempty"`
-	DoneRatio    *int               `json:"done_ratio,omitempty"`
-	StartDate    *string            `json:"start_date,omitempty"`
-	DueDate      *string            `json:"due_date,omitempty"`
-	Notes        *string            `json:"notes,omitempty"`
-	CustomFields []CustomFieldValue `json:"custom_fields,omitempty"`
-	Uploads      []UploadRef        `json:"uploads,omitempty"`
+	Subject       *string            `json:"subject,omitempty"`
+	Description   *string            `json:"description,omitempty"`
+	StatusID      *int               `json:"status_id,omitempty"`
+	PriorityID    *int               `json:"priority_id,omitempty"`
+	AssignedToID  *string            `json:"assigned_to_id,omitempty"`
+	CategoryID    *string            `json:"category_id,omitempty"`
+	ParentIssueID *string            `json:"parent_issue_id,omitempty"`
+	DoneRatio     *int               `json:"done_ratio,omitempty"`
+	StartDate     *string            `json:"start_date,omitempty"`
+	DueDate       *string            `json:"due_date,omitempty"`
+	Notes         *string            `json:"notes,omitempty"`
+	CustomFields  []CustomFieldValue `json:"custom_fields,omitempty"`
+	Uploads       []UploadRef        `json:"uploads,omitempty"`
 }
 
 // TimeEntry is a logged time entry returned by the API.

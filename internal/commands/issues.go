@@ -327,10 +327,10 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 
 func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	var (
-		subject, description, assignee, category, notes, notesFile, startDate, dueDate string
-		status, priority, done                                                         int
-		confirm                                                                        bool
-		cfStrs, attachStrs                                                             []string
+		subject, description, assignee, category, parent, notes, notesFile, startDate, dueDate string
+		status, priority, done                                                                 int
+		confirm                                                                                bool
+		cfStrs, attachStrs                                                                     []string
 	)
 	cmd := &cobra.Command{
 		Use:   "update <id>",
@@ -342,7 +342,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("invalid issue id %q", args[0])
 			}
 
-			mutating := []string{"subject", "description", "status", "assignee", "category", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf", "attach"}
+			mutating := []string{"subject", "description", "status", "assignee", "category", "parent", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf", "attach"}
 			anySet := false
 			for _, n := range mutating {
 				if cmd.Flags().Changed(n) {
@@ -370,6 +370,11 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			}
 			if dueDate != "" && !dateRE.MatchString(dueDate) {
 				return fmt.Errorf("--due-date must be YYYY-MM-DD")
+			}
+			if parent != "" {
+				if n, err := strconv.Atoi(parent); err != nil || n <= 0 {
+					return fmt.Errorf("--parent must be an issue ID (or \"\" to remove the parent)")
+				}
 			}
 			if cmd.Flags().Changed("done") && (done < 0 || done > 100) {
 				return fmt.Errorf("--done must be between 0 and 100")
@@ -401,6 +406,9 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			}
 			if cmd.Flags().Changed("category") {
 				payload.CategoryID = &category
+			}
+			if cmd.Flags().Changed("parent") {
+				payload.ParentIssueID = &parent
 			}
 			if cmd.Flags().Changed("done") {
 				payload.DoneRatio = &done
@@ -442,6 +450,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().IntVar(&status, "status", 0, "New status ID")
 	cmd.Flags().StringVar(&assignee, "assignee", "", "New assignee user ID or 'me'")
 	cmd.Flags().StringVar(&category, "category", "", "New category ID; pass \"\" to clear (see: categories list)")
+	cmd.Flags().StringVar(&parent, "parent", "", "New parent issue ID; pass \"\" to remove the parent")
 	cmd.Flags().IntVar(&priority, "priority", 0, "New priority ID")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
 	cmd.Flags().StringVar(&notes, "notes", "", "Add a journal note")

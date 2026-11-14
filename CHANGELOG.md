@@ -6,6 +6,11 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `issues update --parent <id>` sets an issue's parent; `--parent ""`
+  removes it.
+
 ## [0.6.0] - 2026-11-10
 
 ### Added
