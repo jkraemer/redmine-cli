@@ -253,6 +253,7 @@ When `--config` is omitted, the default
     ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --confirm
     ./redmine-cli wiki put MyPage --project myproj --text-file draft.textile --attach diagram.png --confirm
     ./redmine-cli categories list --project myproj
+    ./redmine-cli versions list --project myproj
     ./redmine-cli custom-fields list
     ./redmine-cli version
 

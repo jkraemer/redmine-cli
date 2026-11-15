@@ -665,3 +665,15 @@ func (c *Client) ListCategories(ctx context.Context, projectID string) (*ListCat
 	}
 	return &res, nil
 }
+
+// ListVersions lists the versions available to a project (its own plus
+// shared ones) via /projects/{id}/versions.json. The endpoint is not
+// paginated.
+func (c *Client) ListVersions(ctx context.Context, projectID string) (*ListVersionsResult, error) {
+	var res ListVersionsResult
+	path := fmt.Sprintf("/projects/%s/versions.json", url.PathEscape(projectID))
+	if err := c.doJSON(ctx, path, nil, &res); err != nil {
+		return nil, err
+	}
+	return &res, nil
+}

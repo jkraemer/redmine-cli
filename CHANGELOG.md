@@ -6,6 +6,14 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `versions list --project <id>` lists the versions available to a
+  project, including versions shared from other projects.
+- `issues create --target-version <id>` and
+  `issues update --target-version <id>` set an issue's target version;
+  `--target-version ""` on update clears it.
+
 ## [0.7.0] - 2026-11-15
 
 ### Added

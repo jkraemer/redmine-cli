@@ -129,6 +129,22 @@ func containsField(arr []any, field, want string) bool {
 	return false
 }
 
+// idByName returns the numeric "id" of the object in arr whose "name"
+// equals name, failing the test if there is none.
+func idByName(t *testing.T, arr []any, name string) int {
+	t.Helper()
+	for _, el := range arr {
+		m, _ := el.(map[string]any)
+		if m["name"] == name {
+			if id, ok := m["id"].(float64); ok {
+				return int(id)
+			}
+		}
+	}
+	t.Fatalf("no object named %q in %v", name, arr)
+	return 0
+}
+
 // containsID reports whether arr contains an object whose numeric "id"
 // field equals id.
 func containsID(arr []any, id int) bool {
@@ -185,14 +201,17 @@ func adminID(t *testing.T) int {
 
 // createIssue creates a confirmed issue with the given subject in the
 // shared e2e project and returns its ID.
-func createIssue(t *testing.T, subject string) int {
+// createIssue creates an issue in the e2e project and returns its ID.
+// extra is appended to the create command's flags.
+func createIssue(t *testing.T, subject string, extra ...string) int {
 	t.Helper()
 	trackerID := firstTrackerID(t)
-	m := runJSON(t, "issues", "create",
+	args := []string{"issues", "create",
 		"--project", project,
 		"--tracker", fmt.Sprintf("%d", trackerID),
 		"--subject", subject,
-		"--confirm")
+		"--confirm"}
+	m := runJSON(t, append(args, extra...)...)
 	issue, ok := m["issue"].(map[string]any)
 	if !ok {
 		t.Fatalf("issues create: no issue in %v", m)
@@ -249,6 +268,13 @@ func TestLookups(t *testing.T) {
 			t.Errorf("categories list does not contain %q: %v", "E2E Cat", arr)
 		}
 	})
+	t.Run("versions", func(t *testing.T) {
+		m := runJSON(t, "versions", "list", "--project", project)
+		arr := jsonArray(t, m, "versions")
+		if !containsField(arr, "name", "E2E 1.0") || !containsField(arr, "name", "E2E 2.0") {
+			t.Errorf("versions list does not contain E2E 1.0 and E2E 2.0: %v", arr)
+		}
+	})
 }
 
 func TestUsersMe(t *testing.T) {
@@ -270,34 +296,10 @@ func TestIssueLifecycle(t *testing.T) {
 	trackerID := firstTrackerID(t)
 
 	cats := runJSON(t, "categories", "list", "--project", project)
-	catArr := jsonArray(t, cats, "issue_categories")
-	var categoryID int
-	for _, el := range catArr {
-		m, _ := el.(map[string]any)
-		if m["name"] == "E2E Cat" {
-			if id, ok := m["id"].(float64); ok {
-				categoryID = int(id)
-			}
-		}
-	}
-	if categoryID == 0 {
-		t.Fatalf("E2E Cat category not found: %v", catArr)
-	}
+	categoryID := idByName(t, jsonArray(t, cats, "issue_categories"), "E2E Cat")
 
 	cfs := runJSON(t, "custom-fields", "list")
-	cfArr := jsonArray(t, cfs, "custom_fields")
-	var cfID int
-	for _, el := range cfArr {
-		m, _ := el.(map[string]any)
-		if m["name"] == "E2E Text" {
-			if id, ok := m["id"].(float64); ok {
-				cfID = int(id)
-			}
-		}
-	}
-	if cfID == 0 {
-		t.Fatalf("E2E Text custom field not found: %v", cfArr)
-	}
+	cfID := idByName(t, jsonArray(t, cfs, "custom_fields"), "E2E Text")
 
 	// Dry-run create must exit 0, report dry_run, and not create anything.
 	dryOut := runJSON(t, "issues", "create",
@@ -418,6 +420,43 @@ func TestIssueParent(t *testing.T) {
 	}
 	if _, present := issue["parent"]; present {
 		t.Errorf("parent still present after removing: %v", issue["parent"])
+	}
+}
+
+func TestIssueTargetVersion(t *testing.T) {
+	versions := jsonArray(t, runJSON(t, "versions", "list", "--project", project), "versions")
+	v1 := idByName(t, versions, "E2E 1.0")
+	v2 := idByName(t, versions, "E2E 2.0")
+
+	issueID := createIssue(t, uniqueSubject("target-version"), "--target-version", fmt.Sprintf("%d", v1))
+	issueIDStr := fmt.Sprintf("%d", issueID)
+	targetVersionID := func() (int, bool) {
+		t.Helper()
+		m := runJSON(t, "issues", "get", issueIDStr)
+		issue, ok := m["issue"].(map[string]any)
+		if !ok {
+			t.Fatalf("get: no issue in %v", m)
+		}
+		fv, present := issue["fixed_version"].(map[string]any)
+		if !present {
+			return 0, false
+		}
+		idF, _ := fv["id"].(float64)
+		return int(idF), true
+	}
+
+	if id, _ := targetVersionID(); id != v1 {
+		t.Errorf("after create: target version=%d, want %d", id, v1)
+	}
+
+	runJSON(t, "issues", "update", issueIDStr, "--target-version", fmt.Sprintf("%d", v2), "--confirm")
+	if id, _ := targetVersionID(); id != v2 {
+		t.Errorf("after update: target version=%d, want %d", id, v2)
+	}
+
+	runJSON(t, "issues", "update", issueIDStr, "--target-version", "", "--confirm")
+	if id, present := targetVersionID(); present {
+		t.Errorf("target version still set after clearing: %d", id)
 	}
 }
 

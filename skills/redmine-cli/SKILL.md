@@ -147,6 +147,7 @@ Notes:
 | Priorities | `redmine-cli priorities list` |
 | Time-entry activities | `redmine-cli time-activities list` |
 | Issue categories (per project) | `redmine-cli categories list --project myproj` |
+| Target versions (per project, incl. shared) | `redmine-cli versions list --project myproj` |
 | Custom fields (admin only) | `redmine-cli custom-fields list` |
 
 ## Quick Reference — Search
@@ -179,10 +180,13 @@ Scopes: `--scope all|my_projects|subprojects` (default = `all`).
 | Log time | append `--confirm` |
 | Issue with category | append `--category 7` |
 | Issue with watchers | append `--watcher 3 --watcher 8` |
+| Issue with target version | append `--target-version 4` |
 | Set category on update | `redmine-cli issues update 42 --category 7 --confirm` |
 | Clear category | `redmine-cli issues update 42 --category "" --confirm` |
 | Set parent on update | `redmine-cli issues update 42 --parent 17 --confirm` |
 | Remove parent | `redmine-cli issues update 42 --parent "" --confirm` |
+| Set target version on update | `redmine-cli issues update 42 --target-version 4 --confirm` |
+| Clear target version | `redmine-cli issues update 42 --target-version "" --confirm` |
 | Preview add watcher | `redmine-cli issues watchers add 42 7` |
 | Add watcher | append `--confirm` |
 | Preview remove watcher | `redmine-cli issues watchers remove 42 7` |

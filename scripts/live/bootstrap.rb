@@ -24,6 +24,8 @@ project.trackers = Tracker.sorted.to_a if project.trackers.empty?
 project.save!
 
 IssueCategory.find_or_create_by!(project: project, name: 'E2E Cat')
+Version.find_or_create_by!(project: project, name: 'E2E 1.0')
+Version.find_or_create_by!(project: project, name: 'E2E 2.0')
 
 unless IssueCustomField.find_by(name: 'E2E Text')
   IssueCustomField.create!(name: 'E2E Text', field_format: 'string',

@@ -267,6 +267,7 @@ type IssueCreate struct {
 	AssignedToID   string             `json:"assigned_to_id,omitempty"`
 	CategoryID     string             `json:"category_id,omitempty"`
 	ParentIssueID  int                `json:"parent_issue_id,omitempty"`
+	FixedVersionID int                `json:"fixed_version_id,omitempty"`
 	StartDate      string             `json:"start_date,omitempty"`
 	DueDate        string             `json:"due_date,omitempty"`
 	DoneRatio      int                `json:"done_ratio,omitempty"`
@@ -280,19 +281,20 @@ type IssueCreate struct {
 // distinguish "not set" (omit from JSON) from "explicitly empty" (send
 // "" to clear the field). Redmine treats missing fields as unchanged.
 type IssueUpdate struct {
-	Subject       *string            `json:"subject,omitempty"`
-	Description   *string            `json:"description,omitempty"`
-	StatusID      *int               `json:"status_id,omitempty"`
-	PriorityID    *int               `json:"priority_id,omitempty"`
-	AssignedToID  *string            `json:"assigned_to_id,omitempty"`
-	CategoryID    *string            `json:"category_id,omitempty"`
-	ParentIssueID *string            `json:"parent_issue_id,omitempty"`
-	DoneRatio     *int               `json:"done_ratio,omitempty"`
-	StartDate     *string            `json:"start_date,omitempty"`
-	DueDate       *string            `json:"due_date,omitempty"`
-	Notes         *string            `json:"notes,omitempty"`
-	CustomFields  []CustomFieldValue `json:"custom_fields,omitempty"`
-	Uploads       []UploadRef        `json:"uploads,omitempty"`
+	Subject        *string            `json:"subject,omitempty"`
+	Description    *string            `json:"description,omitempty"`
+	StatusID       *int               `json:"status_id,omitempty"`
+	PriorityID     *int               `json:"priority_id,omitempty"`
+	AssignedToID   *string            `json:"assigned_to_id,omitempty"`
+	CategoryID     *string            `json:"category_id,omitempty"`
+	ParentIssueID  *string            `json:"parent_issue_id,omitempty"`
+	FixedVersionID *string            `json:"fixed_version_id,omitempty"`
+	DoneRatio      *int               `json:"done_ratio,omitempty"`
+	StartDate      *string            `json:"start_date,omitempty"`
+	DueDate        *string            `json:"due_date,omitempty"`
+	Notes          *string            `json:"notes,omitempty"`
+	CustomFields   []CustomFieldValue `json:"custom_fields,omitempty"`
+	Uploads        []UploadRef        `json:"uploads,omitempty"`
 }
 
 // TimeEntry is a logged time entry returned by the API.
@@ -474,6 +476,31 @@ type Category struct {
 // ListCategoriesResult is the wrapped /projects/{id}/issue_categories.json response.
 type ListCategoriesResult struct {
 	IssueCategories []Category `json:"issue_categories"`
+}
+
+// Version is a project version (a "target version" for issues). Lists
+// include versions shared from other projects, so Project may differ from
+// the project that was queried.
+type Version struct {
+	ID            int    `json:"id"`
+	Project       IDName `json:"project"`
+	Name          string `json:"name"`
+	Description   string `json:"description,omitempty"`
+	Status        string `json:"status"`
+	DueDate       string `json:"due_date,omitempty"`
+	Sharing       string `json:"sharing"`
+	WikiPageTitle string `json:"wiki_page_title,omitempty"`
+	// Hours are pointers because Redmine sends null for "not set".
+	EstimatedHours *float64           `json:"estimated_hours,omitempty"`
+	SpentHours     *float64           `json:"spent_hours,omitempty"`
+	CustomFields   []CustomFieldValue `json:"custom_fields,omitempty"`
+	CreatedOn      string             `json:"created_on,omitempty"`
+	UpdatedOn      string             `json:"updated_on,omitempty"`
+}
+
+// ListVersionsResult is the wrapped /projects/{id}/versions.json response.
+type ListVersionsResult struct {
+	Versions []Version `json:"versions"`
 }
 
 // CustomFieldPossibleValue is one allowed value of a list-format custom field.

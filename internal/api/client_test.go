@@ -982,6 +982,35 @@ func TestListCategories(t *testing.T) {
 	}
 }
 
+func TestListVersions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/projects/my proj/versions.json" {
+			t.Errorf("path=%s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"versions":[{"id":3,"project":{"id":1,"name":"P"},"name":"1.0","description":"First","status":"open","due_date":"2026-12-01","sharing":"none","wiki_page_title":"","estimated_hours":4.5,"spent_hours":1.0,"created_on":"2026-11-01T10:00:00Z","updated_on":"2026-11-02T10:00:00Z"},{"id":4,"project":{"id":2,"name":"Other"},"name":"2.0","status":"closed","sharing":"system","created_on":"2026-11-01T10:00:00Z","updated_on":"2026-11-02T10:00:00Z"}],"total_count":2}`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	res, err := c.ListVersions(context.Background(), "my proj")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Versions) != 2 {
+		t.Fatalf("got %d versions", len(res.Versions))
+	}
+	v := res.Versions[0]
+	if v.ID != 3 || v.Name != "1.0" || v.Status != "open" || v.DueDate != "2026-12-01" || v.Project.Name != "P" || v.Sharing != "none" {
+		t.Errorf("version not parsed: %+v", v)
+	}
+	if v.EstimatedHours == nil || *v.EstimatedHours != 4.5 {
+		t.Errorf("estimated_hours=%v", v.EstimatedHours)
+	}
+	if res.Versions[1].DueDate != "" || res.Versions[1].EstimatedHours != nil {
+		t.Errorf("expected unset due date and hours: %+v", res.Versions[1])
+	}
+}
+
 func TestListCustomFields(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/custom_fields.json" {

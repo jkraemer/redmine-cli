@@ -1899,3 +1899,118 @@ func TestIssuesUpdate_Parent_RejectsNonIssueID(t *testing.T) {
 		}
 	}
 }
+
+func TestIssuesCreate_TargetVersion_DryRunBody(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("server should not be called in dry-run mode (path=%s)", r.URL.Path)
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create", "--project", "p", "--tracker", "1",
+		"--subject", "s", "--target-version", "5"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	if issue["fixed_version_id"] != float64(5) {
+		t.Errorf("fixed_version_id=%v", issue["fixed_version_id"])
+	}
+}
+
+func TestIssuesCreate_NoTargetVersionFlag_OmitsField(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no server call expected")
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "create", "--project", "p", "--tracker", "1", "--subject", "s"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(out.Bytes(), &got)
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	if _, present := issue["fixed_version_id"]; present {
+		t.Errorf("fixed_version_id must be omitted when flag not set: %v", issue)
+	}
+}
+
+func TestIssuesUpdate_TargetVersion_SetAndClear(t *testing.T) {
+	for _, tc := range []struct {
+		flagVal string
+		want    any
+	}{
+		{"5", "5"},
+		{"", ""},
+	} {
+		c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("server should not be called in dry-run mode")
+		})
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+		root := buildRootForTest(rc)
+		root.SetArgs([]string{"issues", "update", "42", "--target-version", tc.flagVal})
+		if err := root.Execute(); err != nil {
+			t.Fatal(err)
+		}
+		stop()
+		var got map[string]any
+		if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		body, _ := got["body"].(map[string]any)
+		issue, _ := body["issue"].(map[string]any)
+		v, present := issue["fixed_version_id"]
+		if !present || v != tc.want {
+			t.Errorf("--target-version %q: fixed_version_id=%v present=%v", tc.flagVal, v, present)
+		}
+	}
+}
+
+func TestIssuesUpdate_NoTargetVersionFlag_OmitsField(t *testing.T) {
+	c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("no server call expected")
+	})
+	defer stop()
+	var out bytes.Buffer
+	rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+	root := buildRootForTest(rc)
+	root.SetArgs([]string{"issues", "update", "42", "--subject", "s"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	_ = json.Unmarshal(out.Bytes(), &got)
+	body, _ := got["body"].(map[string]any)
+	issue, _ := body["issue"].(map[string]any)
+	if _, present := issue["fixed_version_id"]; present {
+		t.Errorf("fixed_version_id must be omitted when flag not set: %v", issue)
+	}
+}
+
+func TestIssuesUpdate_TargetVersion_RejectsNonVersionID(t *testing.T) {
+	for _, val := range []string{"abc", "v1.0", "0", "-3"} {
+		c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("server should not be called for validation errors")
+		})
+		var out bytes.Buffer
+		rc := &runCtx{out: &out, errOut: &bytes.Buffer{}, client: c, format: "json"}
+		root := buildRootForTest(rc)
+		root.SetArgs([]string{"issues", "update", "42", "--target-version", val})
+		err := root.Execute()
+		stop()
+		if err == nil || !strings.Contains(err.Error(), "--target-version must be a version ID") {
+			t.Errorf("--target-version %q: err=%v", val, err)
+		}
+	}
+}

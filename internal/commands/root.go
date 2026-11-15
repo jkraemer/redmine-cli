@@ -184,6 +184,7 @@ func Build(ctx context.Context, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newStatusesCmd(rc))
 	root.AddCommand(newPrioritiesCmd(rc))
 	root.AddCommand(newCategoriesCmd(rc))
+	root.AddCommand(newVersionsCmd(rc))
 	root.AddCommand(newTimeActivitiesCmd(rc))
 	root.AddCommand(newCustomFieldsCmd(rc))
 	root.AddCommand(newSearchCmd(rc))

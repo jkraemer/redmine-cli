@@ -240,7 +240,7 @@ func renderIssueList(rc *runCtx, issues []api.Issue) error {
 func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	var (
 		project, subject, description, assignee, category, startDate, dueDate string
-		tracker, status, priority, parent, done                               int
+		tracker, status, priority, parent, targetVersion, done                int
 		confirm                                                               bool
 		cfStrs, attachStrs                                                    []string
 		watchers                                                              []int
@@ -286,6 +286,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 				AssignedToID:   assignee,
 				CategoryID:     category,
 				ParentIssueID:  parent,
+				FixedVersionID: targetVersion,
 				StartDate:      startDate,
 				DueDate:        dueDate,
 				DoneRatio:      done,
@@ -315,6 +316,7 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().IntVar(&status, "status", 0, "Status ID")
 	cmd.Flags().IntVar(&priority, "priority", 0, "Priority ID")
 	cmd.Flags().IntVar(&parent, "parent", 0, "Parent issue ID")
+	cmd.Flags().IntVar(&targetVersion, "target-version", 0, "Target version ID (see: versions list)")
 	cmd.Flags().StringVar(&startDate, "start-date", "", "Start date (YYYY-MM-DD)")
 	cmd.Flags().StringVar(&dueDate, "due-date", "", "Due date (YYYY-MM-DD)")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
@@ -327,10 +329,10 @@ func newIssuesCreateCmd(rc *runCtx) *cobra.Command {
 
 func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	var (
-		subject, description, assignee, category, parent, notes, notesFile, startDate, dueDate string
-		status, priority, done                                                                 int
-		confirm                                                                                bool
-		cfStrs, attachStrs                                                                     []string
+		subject, description, assignee, category, parent, targetVersion, notes, notesFile, startDate, dueDate string
+		status, priority, done                                                                                int
+		confirm                                                                                               bool
+		cfStrs, attachStrs                                                                                    []string
 	)
 	cmd := &cobra.Command{
 		Use:   "update <id>",
@@ -342,7 +344,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 				return fmt.Errorf("invalid issue id %q", args[0])
 			}
 
-			mutating := []string{"subject", "description", "status", "assignee", "category", "parent", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf", "attach"}
+			mutating := []string{"subject", "description", "status", "assignee", "category", "parent", "target-version", "priority", "done", "notes", "notes-file", "start-date", "due-date", "cf", "attach"}
 			anySet := false
 			for _, n := range mutating {
 				if cmd.Flags().Changed(n) {
@@ -371,10 +373,11 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			if dueDate != "" && !dateRE.MatchString(dueDate) {
 				return fmt.Errorf("--due-date must be YYYY-MM-DD")
 			}
-			if parent != "" {
-				if n, err := strconv.Atoi(parent); err != nil || n <= 0 {
-					return fmt.Errorf("--parent must be an issue ID (or \"\" to remove the parent)")
-				}
+			if err := checkRemovableID("parent", "an issue ID", parent); err != nil {
+				return err
+			}
+			if err := checkRemovableID("target-version", "a version ID", targetVersion); err != nil {
+				return err
 			}
 			if cmd.Flags().Changed("done") && (done < 0 || done > 100) {
 				return fmt.Errorf("--done must be between 0 and 100")
@@ -409,6 +412,9 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 			}
 			if cmd.Flags().Changed("parent") {
 				payload.ParentIssueID = &parent
+			}
+			if cmd.Flags().Changed("target-version") {
+				payload.FixedVersionID = &targetVersion
 			}
 			if cmd.Flags().Changed("done") {
 				payload.DoneRatio = &done
@@ -451,6 +457,7 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringVar(&assignee, "assignee", "", "New assignee user ID or 'me'")
 	cmd.Flags().StringVar(&category, "category", "", "New category ID; pass \"\" to clear (see: categories list)")
 	cmd.Flags().StringVar(&parent, "parent", "", "New parent issue ID; pass \"\" to remove the parent")
+	cmd.Flags().StringVar(&targetVersion, "target-version", "", "New target version ID; pass \"\" to clear (see: versions list)")
 	cmd.Flags().IntVar(&priority, "priority", 0, "New priority ID")
 	cmd.Flags().IntVar(&done, "done", 0, "Done ratio (0-100)")
 	cmd.Flags().StringVar(&notes, "notes", "", "Add a journal note")
@@ -461,6 +468,19 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	cmd.Flags().StringArrayVar(&attachStrs, "attach", nil, attachFlagHelp)
 	addConfirmFlag(cmd, &confirm)
 	return cmd
+}
+
+// checkRemovableID validates the value of an update flag that references
+// another object by ID, where "" removes the reference. It catches typos
+// before they reach the server as an unhelpful 422.
+func checkRemovableID(flag, what, value string) error {
+	if value == "" {
+		return nil
+	}
+	if n, err := strconv.Atoi(value); err != nil || n <= 0 {
+		return fmt.Errorf("--%s must be %s (or \"\" to remove it)", flag, what)
+	}
+	return nil
 }
 
 // customFieldValueString renders a custom field's value for display.
