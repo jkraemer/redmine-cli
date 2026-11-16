@@ -247,6 +247,7 @@ When `--config` is omitted, the default
     ./redmine-cli issues create --project myproj --tracker 1 --subject "Bug" --attach screenshot.png --confirm
     ./redmine-cli issues update 1459 --attach patch.diff --notes "see attached" --confirm
     ./redmine-cli issues watchers add 1459 7 --confirm
+    ./redmine-cli issues relations add 1459 blocks 1460 --confirm
     ./redmine-cli attachments download 42
     ./redmine-cli wiki list --project myproj
     ./redmine-cli wiki get Architecture --project myproj

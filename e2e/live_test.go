@@ -460,6 +460,56 @@ func TestIssueTargetVersion(t *testing.T) {
 	}
 }
 
+func TestIssueRelations(t *testing.T) {
+	a := createIssue(t, uniqueSubject("rel-a"))
+	b := createIssue(t, uniqueSubject("rel-b"))
+	c := createIssue(t, uniqueSubject("rel-c"))
+	id := func(n int) string { return fmt.Sprintf("%d", n) }
+	addRelation := func(args ...string) map[string]any {
+		t.Helper()
+		m := runJSON(t, append(append([]string{"issues", "relations", "add"}, args...), "--confirm")...)
+		rel, ok := m["relation"].(map[string]any)
+		if !ok {
+			t.Fatalf("relations add %v: no relation in %v", args, m)
+		}
+		return rel
+	}
+	relationsOf := func(issueID int) []any {
+		t.Helper()
+		m := runJSON(t, "issues", "get", id(issueID), "--include", "relations")
+		issue, ok := m["issue"].(map[string]any)
+		if !ok {
+			t.Fatalf("get: no issue in %v", m)
+		}
+		return jsonArray(t, issue, "relations")
+	}
+
+	blocks := addRelation(id(a), "blocks", id(b))
+	blocksID := int(blocks["id"].(float64))
+	if !containsID(relationsOf(a), blocksID) || !containsID(relationsOf(b), blocksID) {
+		t.Errorf("blocks relation %d not on both issues", blocksID)
+	}
+
+	precedes := addRelation(id(b), "precedes", id(c), "--delay", "2")
+	if precedes["delay"] != float64(2) {
+		t.Errorf("precedes delay=%v, want 2", precedes["delay"])
+	}
+
+	// Redmine stores inverse types flipped.
+	blocked := addRelation(id(c), "blocked", id(a))
+	if blocked["relation_type"] != "blocks" || blocked["issue_id"] != float64(a) || blocked["issue_to_id"] != float64(c) {
+		t.Errorf("c blocked a stored as %v, want a blocks c", blocked)
+	}
+
+	runJSON(t, "issues", "relations", "remove", id(blocksID), "--confirm")
+	if containsID(relationsOf(a), blocksID) {
+		t.Errorf("relation %d still present after remove", blocksID)
+	}
+	if _, _, code := run(t, "issues", "relations", "remove", id(blocksID), "--confirm"); code != 2 {
+		t.Errorf("removing a removed relation: exit code=%d, want 2", code)
+	}
+}
+
 func TestWatchers(t *testing.T) {
 	issueID := createIssue(t, uniqueSubject("watchers"))
 	issueIDStr := fmt.Sprintf("%d", issueID)

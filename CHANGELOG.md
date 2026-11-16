@@ -6,6 +6,14 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `issues relations add <issue-id> <type> <other-issue-id> [--delay N]`
+  and `issues relations remove <relation-id>` create and delete issue
+  relations (dry-run unless `--confirm`).
+- The markdown relations list of `issues get --include relations` shows
+  each relation's ID.
+
 ## [0.8.0] - 2026-11-15
 
 ### Added

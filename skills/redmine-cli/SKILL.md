@@ -191,6 +191,14 @@ Scopes: `--scope all|my_projects|subprojects` (default = `all`).
 | Add watcher | append `--confirm` |
 | Preview remove watcher | `redmine-cli issues watchers remove 42 7` |
 | Remove watcher | append `--confirm` |
+| Preview relation | `redmine-cli issues relations add 42 blocks 17` |
+| Add relation | append `--confirm` |
+| Precedes with delay (days) | `redmine-cli issues relations add 42 precedes 17 --delay 2 --confirm` |
+| Remove relation (ID from `issues get 42 --include relations`) | `redmine-cli issues relations remove 873 --confirm` |
+
+Relation types: `relates`, `duplicates`, `duplicated`, `blocks`, `blocked`,
+`precedes`, `follows`, `copied_to`, `copied_from`. Redmine stores the
+inverse ones flipped (`42 blocked 17` is saved as `17 blocks 42`).
 
 ### Update semantics
 
