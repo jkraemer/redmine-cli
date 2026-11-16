@@ -192,3 +192,18 @@ func TestRelationsRemove_RejectsBadID(t *testing.T) {
 		}
 	}
 }
+
+// The relation type in the server's response is shown verbatim for types
+// the CLI does not know, so it must be stripped of terminal escapes.
+func TestRelationsAdd_Confirm_Markdown_SanitizesServerType(t *testing.T) {
+	out, err := runRelations(t, "markdown", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"relation":{"id":873,"issue_id":5,"issue_to_id":12,"relation_type":"evil\u001b]0;pwned\u0007"}}`))
+	}, "add", "5", "relates", "12", "--confirm")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(out, "\x1b\x07") {
+		t.Errorf("terminal escapes not stripped: %q", out)
+	}
+}

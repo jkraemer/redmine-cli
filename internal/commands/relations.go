@@ -77,7 +77,7 @@ func newRelationsAddCmd(rc *runCtx) *cobra.Command {
 			}
 			if rc.format == "markdown" {
 				label, other := relationFromSide(*rel, issueID)
-				_, err := fmt.Fprintf(rc.out, "Added relation %d: #%d %s #%d.\n", rel.ID, issueID, label, other)
+				_, err := fmt.Fprintf(rc.out, "Added relation %d: #%d %s #%d.\n", rel.ID, issueID, output.SanitizeForTerminal(label), other)
 				return err
 			}
 			return output.JSON(rc.out, map[string]any{"relation": rel})

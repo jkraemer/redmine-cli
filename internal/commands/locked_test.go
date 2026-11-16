@@ -158,6 +158,8 @@ func TestLocked_RefusesEveryWriteCommand(t *testing.T) {
 		{"issues", "update", "7", "--notes", "x"},
 		{"issues", "watchers", "add", "7", "3"},
 		{"issues", "watchers", "remove", "7", "3"},
+		{"issues", "relations", "add", "7", "blocks", "8"},
+		{"issues", "relations", "remove", "9"},
 		{"time", "log", "--issue", "7", "--hours", "1"},
 		{"wiki", "put", "P", "--project", "p", "--text", "x"},
 	}
