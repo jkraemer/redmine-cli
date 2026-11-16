@@ -1170,3 +1170,65 @@ func TestListIssues_LaterFilterWithSameNameWins(t *testing.T) {
 		t.Errorf("author_id=%v want [2]", got)
 	}
 }
+
+func TestCreateRelation(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || r.URL.Path != "/issues/5/relations.json" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"relation":{"id":873,"issue_id":5,"issue_to_id":12,"relation_type":"precedes","delay":0}}`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	delay := 0
+	rel, err := c.CreateRelation(context.Background(), 5, RelationCreate{IssueToID: 12, RelationType: "precedes", Delay: &delay})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"relation":{"issue_to_id":12,"relation_type":"precedes","delay":0}}`; string(gotBody) != want {
+		t.Errorf("body=%s, want %s", gotBody, want)
+	}
+	if rel.ID != 873 || rel.IssueID != 5 || rel.IssueToID != 12 || rel.RelationType != "precedes" || rel.Delay == nil || *rel.Delay != 0 {
+		t.Errorf("relation=%+v", rel)
+	}
+}
+
+func TestCreateRelation_OmitsUnsetDelay(t *testing.T) {
+	var gotBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotBody, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprint(w, `{"relation":{"id":874,"issue_id":5,"issue_to_id":12,"relation_type":"relates"}}`)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if _, err := c.CreateRelation(context.Background(), 5, RelationCreate{IssueToID: 12, RelationType: "relates"}); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"relation":{"issue_to_id":12,"relation_type":"relates"}}`; string(gotBody) != want {
+		t.Errorf("body=%s, want %s", gotBody, want)
+	}
+}
+
+func TestDeleteRelation(t *testing.T) {
+	var called bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		if r.Method != "DELETE" || r.URL.Path != "/relations/873.json" {
+			t.Errorf("%s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "k", srv.Client())
+	if err := c.DeleteRelation(context.Background(), 873); err != nil {
+		t.Fatal(err)
+	}
+	if !called {
+		t.Error("server not called")
+	}
+}

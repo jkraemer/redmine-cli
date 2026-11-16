@@ -140,6 +140,15 @@ type IssueRelation struct {
 	Delay        *int   `json:"delay,omitempty"`
 }
 
+// RelationCreate is the payload for POST /issues/{id}/relations.json. The
+// client wraps it in {"relation": ...}. Delay (days) applies to
+// precedes/follows only; a pointer so that 0 is still sent.
+type RelationCreate struct {
+	IssueToID    int    `json:"issue_to_id"`
+	RelationType string `json:"relation_type"`
+	Delay        *int   `json:"delay,omitempty"`
+}
+
 // Changeset is a repository commit linked to an issue.
 type Changeset struct {
 	Revision    string  `json:"revision"`

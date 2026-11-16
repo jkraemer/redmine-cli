@@ -486,6 +486,28 @@ func (c *Client) RemoveWatcher(ctx context.Context, issueID, userID int) error {
 	return c.doWriteJSON(ctx, "DELETE", fmt.Sprintf("/issues/%d/watchers/%d.json", issueID, userID), nil, nil)
 }
 
+// CreateRelation relates an issue to another one via
+// POST /issues/{id}/relations.json and returns the created relation.
+// Redmine stores inverse types (e.g. "blocked") flipped, so the returned
+// relation's IssueID may be the other issue.
+func (c *Client) CreateRelation(ctx context.Context, issueID int, r RelationCreate) (*IssueRelation, error) {
+	in := struct {
+		Relation RelationCreate `json:"relation"`
+	}{Relation: r}
+	var out struct {
+		Relation IssueRelation `json:"relation"`
+	}
+	if err := c.doWriteJSON(ctx, "POST", fmt.Sprintf("/issues/%d/relations.json", issueID), in, &out); err != nil {
+		return nil, err
+	}
+	return &out.Relation, nil
+}
+
+// DeleteRelation removes a relation via DELETE /relations/{id}.json.
+func (c *Client) DeleteRelation(ctx context.Context, relationID int) error {
+	return c.doWriteJSON(ctx, "DELETE", fmt.Sprintf("/relations/%d.json", relationID), nil, nil)
+}
+
 // GetCurrentUser fetches /users/current.json.
 func (c *Client) GetCurrentUser(ctx context.Context) (*User, error) {
 	var wrapper struct {
