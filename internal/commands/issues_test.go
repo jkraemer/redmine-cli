@@ -1628,7 +1628,7 @@ func TestIssuesGet_Markdown_ShowsSubtaskTree(t *testing.T) {
 // as "9 blocks 7" shows as "blocked by #9" on issue 7.
 func TestIssuesGet_Markdown_ShowsRelationsFromThisIssuesSide(t *testing.T) {
 	got := runIssuesGetMarkdown(t, richIssueJSON)
-	if !strings.Contains(got, "\n## Relations\n\n- precedes #8 (delay: 2 days)\n- blocked by #9\n- related to #12\n") {
+	if !strings.Contains(got, "\n## Relations\n\n- precedes #8 (delay: 2 days) (relation 1)\n- blocked by #9 (relation 2)\n- related to #12 (relation 3)\n") {
 		t.Errorf("relations missing or malformed:\n%s", got)
 	}
 }

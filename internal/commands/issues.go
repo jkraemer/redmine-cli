@@ -60,6 +60,7 @@ func newIssuesCmd(rc *runCtx) *cobra.Command {
 	c.AddCommand(newIssuesCreateCmd(rc))
 	c.AddCommand(newIssuesUpdateCmd(rc))
 	c.AddCommand(newIssuesWatchersCmd(rc))
+	c.AddCommand(newIssuesRelationsCmd(rc))
 	return c
 }
 
@@ -571,16 +572,12 @@ func renderIssueDetail(rc *runCtx, is *api.Issue) error {
 		if len(is.Relations) > 0 {
 			fmt.Fprintf(&b, "\n## Relations\n\n")
 			for _, r := range is.Relations {
-				forward := r.IssueID == is.ID
-				other := r.IssueToID
-				if !forward {
-					other = r.IssueID
-				}
-				fmt.Fprintf(&b, "- %s #%d", clean(relationLabel(r.RelationType, forward)), other)
+				label, other := relationFromSide(r, is.ID)
+				fmt.Fprintf(&b, "- %s #%d", clean(label), other)
 				if r.Delay != nil {
 					fmt.Fprintf(&b, " (delay: %d days)", *r.Delay)
 				}
-				b.WriteString("\n")
+				fmt.Fprintf(&b, " (relation %d)\n", r.ID)
 			}
 		}
 		if len(is.Checklists) > 0 {
@@ -688,6 +685,15 @@ var relationLabels = map[string][2]string{
 	"blocks":     {"blocks", "blocked by"},
 	"precedes":   {"precedes", "follows"},
 	"copied_to":  {"copied to", "copied from"},
+}
+
+// relationFromSide words relation r as seen from issueID and returns the
+// label plus the ID of the issue on the other end.
+func relationFromSide(r api.IssueRelation, issueID int) (label string, other int) {
+	if r.IssueID == issueID {
+		return relationLabel(r.RelationType, true), r.IssueToID
+	}
+	return relationLabel(r.RelationType, false), r.IssueID
 }
 
 // relationLabel words a relation from the viewed issue's side: forward
