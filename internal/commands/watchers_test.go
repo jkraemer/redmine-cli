@@ -108,16 +108,28 @@ func TestWatchersRemove_Confirm_SendsDELETE(t *testing.T) {
 	}
 }
 
-func TestWatchersAdd_RejectsBadArgs(t *testing.T) {
-	for _, args := range [][]string{
-		{"issues", "watchers", "add", "x", "7"},
-		{"issues", "watchers", "add", "42", "y"},
+func TestWatchers_RejectBadArgs(t *testing.T) {
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"add", "x", "7"}, `invalid issue id "x"`},
+		{[]string{"add", "42", "y"}, `invalid user id "y"`},
+		{[]string{"add", "0", "7"}, `invalid issue id "0"`},
+		{[]string{"add", "42", "0"}, `invalid user id "0"`},
+		{[]string{"remove", "0", "7"}, `invalid issue id "0"`},
+		{[]string{"remove", "42", "0"}, `invalid user id "0"`},
 	} {
-		rc := &runCtx{out: &bytes.Buffer{}, errOut: &bytes.Buffer{}, format: "json"}
+		c, stop := newClientForTest(t, func(w http.ResponseWriter, r *http.Request) {
+			t.Errorf("%v: no server call expected (%s %s)", tc.args, r.Method, r.URL.Path)
+		})
+		rc := &runCtx{out: &bytes.Buffer{}, errOut: &bytes.Buffer{}, client: c, format: "json"}
 		root := buildRootForTest(rc)
-		root.SetArgs(args)
-		if err := root.Execute(); err == nil {
-			t.Errorf("expected error for args %v", args)
+		root.SetArgs(append([]string{"issues", "watchers"}, tc.args...))
+		err := root.Execute()
+		stop()
+		if err == nil || err.Error() != tc.want {
+			t.Errorf("%v: err=%v, want %q", tc.args, err, tc.want)
 		}
 	}
 }

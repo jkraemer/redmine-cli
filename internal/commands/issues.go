@@ -471,6 +471,15 @@ func newIssuesUpdateCmd(rc *runCtx) *cobra.Command {
 	return cmd
 }
 
+// positiveID parses a numeric ID argument; kind names it in the error.
+func positiveID(arg, kind string) (int, error) {
+	n, err := strconv.Atoi(arg)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("invalid %s id %q", kind, arg)
+	}
+	return n, nil
+}
+
 // checkRemovableID validates the value of an update flag that references
 // another object by ID, where "" removes the reference. It catches typos
 // before they reach the server as an unhelpful 422.

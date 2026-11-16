@@ -14,6 +14,11 @@ the project adheres to [Semantic Versioning](https://semver.org/).
 - The markdown relations list of `issues get --include relations` shows
   each relation's ID.
 
+### Changed
+
+- `issues watchers add|remove` reject `0` and negative issue/user IDs
+  before sending a request, like `issues relations`.
+
 ## [0.8.0] - 2026-11-15
 
 ### Added

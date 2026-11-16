@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -19,13 +18,11 @@ func newIssuesWatchersCmd(rc *runCtx) *cobra.Command {
 // watcherArgs parses the <issue-id> <user-id> argument pair shared by
 // add and remove.
 func watcherArgs(args []string) (issueID, userID int, err error) {
-	issueID, err = strconv.Atoi(args[0])
-	if err != nil {
-		return 0, 0, fmt.Errorf("invalid issue id %q", args[0])
+	if issueID, err = positiveID(args[0], "issue"); err != nil {
+		return 0, 0, err
 	}
-	userID, err = strconv.Atoi(args[1])
-	if err != nil {
-		return 0, 0, fmt.Errorf("invalid user id %q", args[1])
+	if userID, err = positiveID(args[1], "user"); err != nil {
+		return 0, 0, err
 	}
 	return issueID, userID, nil
 }

@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -22,15 +21,6 @@ func newIssuesRelationsCmd(rc *runCtx) *cobra.Command {
 	c.AddCommand(newRelationsAddCmd(rc))
 	c.AddCommand(newRelationsRemoveCmd(rc))
 	return c
-}
-
-// positiveID parses a numeric ID argument; kind names it in the error.
-func positiveID(arg, kind string) (int, error) {
-	n, err := strconv.Atoi(arg)
-	if err != nil || n <= 0 {
-		return 0, fmt.Errorf("invalid %s id %q", kind, arg)
-	}
-	return n, nil
 }
 
 func newRelationsAddCmd(rc *runCtx) *cobra.Command {
